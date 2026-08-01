@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Roll Call — Class Attendance Register</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#1B2A3A; --paper:#EAF3FA; --paper-alt:#D9E7F3;
+    --ledger:#2E6DA4; --ledger-light:#3E85C4; --ledger-dark:#1F4E78;
+    --brass:#1FA37A; --brass-light:#3FC79C;
+    --red:#D64545; --red-light:#E36F6F;
+    --card:#FFFFFF; --line:#C3D9EC;
+    --shadow: 0 2px 10px rgba(31,78,120,0.10);
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;}
+  html,body{background:var(--paper);color:var(--ink);font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;}
+  h1,h2,h3,.slab{font-family:'Zilla Slab',serif;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  button{font-family:inherit;cursor:pointer;}
+  input,select{font-family:inherit;}
+  ::selection{background:var(--brass-light);color:var(--ledger-dark);}
+
+  /* ---------- Login gate ---------- */
+  .login-screen{
+    position:fixed;inset:0;background:var(--ledger-dark);z-index:500;
+    display:flex;align-items:center;justify-content:center;padding:20px;
+  }
+  .login-card{
+    background:var(--card);border-radius:14px;max-width:360px;width:100%;
+    padding:28px 24px;box-shadow:0 20px 50px rgba(0,0,0,0.35);text-align:center;
+  }
+  .login-card .brand-mark{margin:0 auto 14px auto;}
+  .login-card h2{margin:0 0 4px 0;font-size:20px;}
+  .login-card p{font-size:13px;color:#5B7285;margin:0 0 18px 0;}
+  .pin-input{
+    width:100%;text-align:center;letter-spacing:0.5em;font-size:22px;
+    padding:12px;border:1.5px solid var(--line);border-radius:8px;margin-bottom:12px;
+  }
+  .login-note{font-size:11px;color:#8AA0B3;margin-top:14px;line-height:1.5;}
+  .login-error{color:var(--red);font-size:12.5px;margin:-6px 0 10px 0;display:none;}
+
+  /* ---------- Header ---------- */
+  .ledger-header{background:var(--ledger);color:#F6F1E3;padding:22px 20px 0 20px;position:sticky;top:0;z-index:40;box-shadow:0 3px 12px rgba(0,0,0,0.18);}
+  .header-top{display:flex;align-items:center;justify-content:space-between;max-width:1080px;margin:0 auto;padding-bottom:16px;flex-wrap:wrap;gap:10px;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand-mark{width:40px;height:40px;border-radius:6px;background:var(--brass);display:flex;align-items:center;justify-content:center;color:var(--ledger-dark);font-weight:700;font-family:'Zilla Slab',serif;font-size:20px;transform:rotate(-4deg);box-shadow:0 2px 0 rgba(0,0,0,0.25);flex-shrink:0;}
+  .brand h1{margin:0;font-size:23px;font-weight:700;letter-spacing:0.2px;}
+  .brand span{display:block;font-family:'Inter',sans-serif;font-size:11.5px;color:#C7DEF0;letter-spacing:0.12em;text-transform:uppercase;margin-top:2px;}
+  .today-chip{font-family:'IBM Plex Mono',monospace;font-size:12.5px;background:rgba(255,255,255,0.08);padding:7px 12px;border-radius:20px;color:#DCEBFA;border:1px solid rgba(255,255,255,0.14);}
+  .tabs{max-width:1080px;margin:0 auto;display:flex;gap:4px;flex-wrap:wrap;}
+  .tab-btn{background:var(--paper);color:var(--ledger);border:none;padding:11px 18px 10px 18px;font-size:14px;font-weight:600;border-radius:9px 9px 0 0;opacity:0.55;transform:translateY(4px);transition:all .15s ease;}
+  .tab-btn.active{opacity:1;transform:translateY(0);box-shadow:0 -2px 6px rgba(0,0,0,0.08);}
+  .tab-btn:hover{opacity:0.85;}
+
+  main{max-width:1080px;margin:0 auto;padding:28px 20px 80px 20px;}
+  .view{display:none;}
+  .view.active{display:block;animation:fadeIn .25s ease;}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:translateY(0);}}
+
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);margin-bottom:20px;}
+  .panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:18px 20px;border-bottom:1px solid var(--line);}
+  .panel-head h2{margin:0;font-size:19px;font-weight:600;}
+  .panel-head p{margin:3px 0 0 0;font-size:13px;color:#5B7285;}
+  .panel-body{padding:20px;}
+
+  .btn{border:none;border-radius:8px;padding:10px 16px;font-size:13.5px;font-weight:600;display:inline-flex;align-items:center;gap:7px;transition:transform .1s ease, opacity .15s ease;}
+  .btn:active{transform:scale(0.97);}
+  .btn-primary{background:var(--ledger);color:#F6F1E3;}
+  .btn-primary:hover{background:var(--ledger-light);}
+  .btn-brass{background:var(--brass);color:var(--ledger-dark);}
+  .btn-brass:hover{background:var(--brass-light);}
+  .btn-outline{background:transparent;border:1.5px solid var(--line);color:var(--ink);}
+  .btn-outline:hover{border-color:var(--ledger);}
+  .btn-ghost{background:transparent;color:var(--ledger);padding:8px 10px;}
+  .btn-ghost:hover{background:var(--paper-alt);}
+  .btn-danger{background:transparent;color:var(--red);padding:8px 10px;}
+  .btn-danger:hover{background:#F3E2DC;}
+  .btn-sm{padding:7px 12px;font-size:12.5px;}
+  .btn:disabled{opacity:0.4;cursor:not-allowed;}
+  .btn-full{width:100%;justify-content:center;}
+
+  #studentGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;margin-top:16px;}
+  .student-card{border:1px solid var(--line);border-radius:10px;padding:14px;background:var(--paper);display:flex;gap:12px;align-items:flex-start;position:relative;}
+  .avatar{width:52px;height:52px;border-radius:50%;object-fit:cover;border:2px solid var(--card);box-shadow:0 0 0 2px var(--brass);flex-shrink:0;background:var(--ledger);}
+  .avatar-fallback{width:52px;height:52px;border-radius:50%;flex-shrink:0;background:var(--ledger);color:var(--brass-light);display:flex;align-items:center;justify-content:center;font-family:'Zilla Slab',serif;font-weight:600;font-size:18px;box-shadow:0 0 0 2px var(--brass);}
+  .student-info{min-width:0;flex:1;}
+  .student-info h3{margin:0 0 3px 0;font-size:15px;font-weight:600;line-height:1.25;}
+  .reg-badge{display:inline-block;font-size:11px;background:var(--paper-alt);padding:2px 7px;border-radius:5px;color:var(--ledger);border:1px solid var(--line);}
+  .dept-badge{display:inline-block;font-size:10.5px;background:var(--ledger-dark);color:#fff;padding:2px 7px;border-radius:5px;margin-left:5px;}
+  .card-actions{position:absolute;top:8px;right:8px;display:flex;gap:2px;}
+  .icon-btn{background:none;border:none;width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#5B7285;font-size:14px;}
+  .icon-btn:hover{background:var(--paper-alt);color:var(--ink);}
+
+  .empty-state{text-align:center;padding:40px 20px;color:#6C8499;}
+  .empty-state .stamp-icon{font-size:34px;display:block;margin-bottom:10px;opacity:0.5;}
+
+  .field{margin-bottom:14px;}
+  .field label{display:block;font-size:12.5px;font-weight:600;color:var(--ledger);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;}
+  .field input[type=text],.field input[type=number],.field input[type=tel],.field select,.field input[type=date]{
+    width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;background:#fff;font-size:14px;color:var(--ink);
+  }
+  .field input:focus,.field select:focus{outline:2px solid var(--brass);outline-offset:1px;border-color:var(--brass);}
+  .photo-row{display:flex;align-items:center;gap:14px;}
+  .photo-preview{width:64px;height:64px;border-radius:50%;object-fit:cover;background:var(--paper-alt);border:2px dashed var(--line);display:flex;align-items:center;justify-content:center;color:#6C8499;font-size:11px;text-align:center;flex-shrink:0;}
+  .form-actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;}
+
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(23,48,41,0.55);z-index:100;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(1px);}
+  .modal-overlay.active{display:flex;}
+  .modal{background:var(--card);border-radius:14px;max-width:440px;width:100%;box-shadow:0 20px 50px rgba(0,0,0,0.3);max-height:88vh;overflow-y:auto;}
+  .modal-head{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line);}
+  .modal-head h3{margin:0;font-size:17px;}
+  .modal-body{padding:20px;}
+
+  .date-picker-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .period-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-top:12px;}
+  .period-btn{border:1.5px solid var(--line);background:#fff;color:var(--ledger);border-radius:7px;padding:8px 12px;font-size:12.5px;font-weight:700;}
+  .period-btn.active{background:var(--ledger);border-color:var(--ledger);color:#fff;}
+  .filter-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px;}
+  .filter-row select{padding:7px 10px;border:1.5px solid var(--line);border-radius:7px;font-size:12.5px;background:#fff;color:var(--ink);}
+
+  .roll-row{display:flex;align-items:center;gap:12px;padding:12px 6px;border-bottom:1px solid var(--line);}
+  .roll-row:last-child{border-bottom:none;}
+  .roll-row .student-info{flex:1;}
+  .toggle-group{display:flex;gap:6px;flex-shrink:0;}
+  .toggle-btn{border:1.5px solid var(--line);background:#fff;border-radius:7px;padding:7px 13px;font-size:12.5px;font-weight:700;color:#6C8499;letter-spacing:0.03em;}
+  .toggle-btn.present.on{background:var(--brass);border-color:var(--brass);color:var(--ledger-dark);}
+  .toggle-btn.absent.on{background:var(--red);border-color:var(--red);color:#fff;}
+  #leaveToggleBtn.on{background:#8A5E14;border-color:#8A5E14;color:#fff;}
+  .leave-state{text-align:center;padding:36px 20px;color:#8A5E14;background:#F5E7CB;border-radius:10px;}
+  .save-bar{display:flex;justify-content:space-between;align-items:center;padding-top:16px;margin-top:6px;border-top:1px dashed var(--line);flex-wrap:wrap;gap:10px;}
+  .stamp-toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) rotate(-3deg);background:var(--brass);color:var(--ledger-dark);padding:10px 22px;border-radius:6px;font-family:'Zilla Slab',serif;font-weight:700;letter-spacing:0.08em;border:3px double var(--ledger-dark);box-shadow:0 8px 20px rgba(0,0,0,0.25);z-index:200;opacity:0;pointer-events:none;transition:opacity .2s ease, transform .2s ease;}
+  .stamp-toast.show{opacity:1;transform:translateX(-50%) rotate(-3deg) scale(1.03);}
+
+  .report-controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  .period-nav{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
+  .table-wrap{overflow-x:auto;margin-top:16px;border:1px solid var(--line);border-radius:10px;}
+  table{border-collapse:collapse;width:100%;font-size:13px;}
+  thead th{background:var(--ledger);color:#F0EBDA;position:sticky;top:0;padding:9px 8px;font-weight:600;text-align:center;white-space:nowrap;font-size:11.5px;}
+  thead th:first-child{text-align:left;position:sticky;left:0;z-index:2;padding-left:14px;}
+  tbody td{padding:8px;text-align:center;border-bottom:1px solid var(--line);white-space:nowrap;}
+  tbody td:first-child{text-align:left;background:var(--card);position:sticky;left:0;padding-left:14px;font-weight:600;}
+  tbody tr:nth-child(even) td{background:#E1EEF8;}
+  tbody tr:nth-child(even) td:first-child{background:#E1EEF8;}
+  .mark-P{color:var(--ledger);font-weight:700;}
+  .mark-A{color:var(--red);font-weight:700;}
+  .mark-H{color:#8A5E14;font-weight:700;}
+  .mark-dash{color:#9FB8CC;}
+  .pct-pill{display:inline-block;padding:3px 9px;border-radius:20px;font-weight:700;font-size:12px;font-family:'IBM Plex Mono',monospace;}
+  .pct-good{background:#DCEBDF;color:#276240;}
+  .pct-warn{background:#F5E7CB;color:#8A5E14;}
+  .pct-bad{background:#F3DAD3;color:#8C3620;}
+
+  .roster-report-row{display:flex;align-items:center;gap:12px;padding:12px 6px;border-bottom:1px solid var(--line);flex-wrap:wrap;}
+  .roster-report-row:last-child{border-bottom:none;}
+  .roster-report-row .student-info{flex:1;min-width:140px;}
+
+  .cycle-banner{background:var(--ledger-dark);color:#EAF3FA;border-radius:10px;padding:14px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;}
+  .cycle-banner strong{font-family:'Zilla Slab',serif;font-size:15px;display:block;margin-bottom:2px;}
+  .cycle-banner span{font-size:12.5px;color:#BFDAF0;}
+  .cycle-banner .send-actions{display:flex;gap:8px;flex-wrap:wrap;}
+  .btn-whatsapp{background:#2FA84F;color:#fff;}
+  .btn-whatsapp:hover{background:#37BF5B;}
+  .btn-sms{background:#3D6FE0;color:#fff;}
+  .btn-sms:hover{background:#4C7EF0;}
+
+  .parent-notify-panel{background:var(--paper-alt);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-bottom:16px;}
+  .parent-notify-panel > .pn-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+  .parent-notify-panel > .pn-head strong{font-family:'Zilla Slab',serif;font-size:15px;}
+  .parent-notify-panel > .pn-head span{font-size:12px;color:#5B7285;}
+  .pn-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);flex-wrap:wrap;}
+  .pn-row:last-child{border-bottom:none;}
+  .pn-row .pn-info{flex:1;min-width:140px;font-size:13px;}
+  .pn-row .pn-phone{font-size:11.5px;color:#5B7285;}
+  .pn-sent{font-size:11.5px;color:#276240;font-weight:600;}
+
+  .shared-banner{background:var(--brass);color:var(--ledger-dark);text-align:center;padding:9px;font-size:13px;font-weight:600;}
+
+  .chip-list{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;}
+  .chip{background:var(--paper-alt);border:1px solid var(--line);border-radius:20px;padding:6px 12px;font-size:12.5px;display:flex;align-items:center;gap:8px;}
+  .chip button{background:none;border:none;color:var(--red);font-weight:700;padding:0;font-size:13px;}
+  .hours-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
+  .hours-row input{padding:8px 10px;border:1.5px solid var(--line);border-radius:7px;font-size:13px;}
+  .settings-block{margin-bottom:26px;}
+  .settings-block h3{font-size:15px;margin:0 0 10px 0;}
+  .settings-block p.hint{font-size:12px;color:#5B7285;margin:0 0 12px 0;}
+
+  footer{text-align:center;padding:20px;font-size:11.5px;color:#6C8499;}
+
+  @media (max-width:560px){
+    .brand h1{font-size:19px;}
+    .panel-body{padding:14px;}
+    .toggle-btn{padding:6px 10px;font-size:11.5px;}
+    .hours-row{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+
+<!-- STAFF LOGIN GATE -->
+<div class="login-screen" id="loginScreen" style="display:none;">
+  <div class="login-card">
+    <div class="brand-mark" style="width:44px;height:44px;">R</div>
+    <h2 id="loginTitle">Staff Login</h2>
+    <p id="loginSubtitle">Enter the staff PIN to open Roll Call.</p>
+    <input type="password" inputmode="numeric" class="pin-input mono" id="pinInput" maxlength="8" placeholder="••••">
+    <p class="login-error" id="loginError">Incorrect PIN. Try again.</p>
+    <button class="btn btn-primary btn-full" id="pinSubmitBtn">Unlock</button>
+    <p class="login-note">This PIN only locks the app screen on this device/browser — it is not secure server-side authentication, since this is a static page. Anyone with direct file/browser-storage access could bypass it. If you forget the PIN, it can only be reset by clearing this site's browser storage (which also erases attendance data), so please save it somewhere safe.</p>
+  </div>
+</div>
+
+<div id="appRoot" style="display:none;">
+
+<div id="sharedBanner" class="shared-banner" style="display:none;">📋 Viewing a shared read-only attendance report</div>
+
+<header class="ledger-header" id="appHeader">
+  <div class="header-top">
+    <div class="brand">
+      <div class="brand-mark">R</div>
+      <div><h1>Roll Call</h1><span>Class Attendance Register</span></div>
+    </div>
+    <div class="today-chip" id="todayChip"></div>
+  </div>
+  <nav class="tabs" id="tabNav">
+    <button class="tab-btn active" data-view="students">Students</button>
+    <button class="tab-btn" data-view="attendance">Mark Attendance</button>
+    <button class="tab-btn" data-view="reports">Reports</button>
+    <button class="tab-btn" data-view="settings">Settings</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- STUDENTS -->
+  <section class="view active" id="view-students">
+    <div class="panel">
+      <div class="panel-head">
+        <div><h2>Class Roster</h2><p>Add each student's photo, name, register number and department once.</p></div>
+        <button class="btn btn-brass" id="openAddStudent">＋ Add Student</button>
+      </div>
+      <div class="panel-body">
+        <div class="filter-row">
+          <select id="studentDeptFilter"><option value="">All Departments</option></select>
+        </div>
+        <div id="studentGrid"></div>
+        <div id="studentsEmpty" class="empty-state" style="display:none;">
+          <span class="stamp-icon">🗂</span>No students yet. Add your first student to start taking attendance.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- MARK ATTENDANCE -->
+  <section class="view" id="view-attendance">
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>Mark Attendance</h2>
+          <p>Pick a date and period, then everyone starts Present — tap to flip absentees.</p>
+          <div class="date-picker-row">
+            <input type="date" id="attendanceDate" class="mono">
+            <button class="btn btn-outline btn-sm" id="leaveToggleBtn">🏖 Mark as College Leave</button>
+          </div>
+          <div class="period-tabs" id="periodTabs"></div>
+          <div class="filter-row">
+            <select id="attendanceDeptFilter"><option value="">All Departments</option></select>
+          </div>
+        </div>
+      </div>
+      <div class="panel-body">
+        <p id="dateEditNote" style="margin:0 0 14px 0;font-size:12.5px;color:var(--ledger);font-weight:600;"></p>
+        <div id="attendanceList"></div>
+        <div id="attendanceEmpty" class="empty-state" style="display:none;">
+          <span class="stamp-icon">🧑‍🎓</span>Add students in the Students tab first.
+        </div>
+        <div class="save-bar" id="attendanceSaveBar" style="display:none;">
+          <span id="attendanceSummary" style="font-size:13px;color:#5B7285;"></span>
+          <button class="btn btn-primary" id="saveAttendanceBtn">Save Period Attendance</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- REPORTS -->
+  <section class="view" id="view-reports">
+    <div class="panel">
+      <div class="panel-head">
+        <div>
+          <h2>15-Day Attendance Report</h2>
+          <p id="reportRangeLabel">Combined percentage across all periods, last 15 days.</p>
+          <div class="period-nav">
+            <button class="btn btn-outline btn-sm" id="prevPeriodBtn">◀ Previous 15 days</button>
+            <button class="btn btn-outline btn-sm" id="nextPeriodBtn">Next 15 days ▶</button>
+            <button class="btn btn-ghost btn-sm" id="currentPeriodBtn" style="display:none;">Back to current</button>
+          </div>
+          <div class="filter-row">
+            <select id="reportDeptFilter"><option value="">All Departments</option></select>
+          </div>
+        </div>
+        <div class="report-controls">
+          <label class="mono" style="font-size:12px;color:#5B7285;display:flex;align-items:center;gap:6px;">
+            Alert below <input type="number" id="thresholdInput" value="75" min="0" max="100" style="width:56px;padding:5px 7px;border:1.5px solid var(--line);border-radius:6px;">%
+          </label>
+          <button class="btn btn-outline btn-sm" id="shareReportBtn">🔗 Share Link</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div id="cycleBanner" class="cycle-banner" style="display:none;"></div>
+        <div id="parentNotifyPanel" style="display:none;"></div>
+        <div id="rosterReport"></div>
+        <div class="table-wrap"><table id="reportTable"></table></div>
+        <div id="reportsEmpty" class="empty-state" style="display:none;">
+          <span class="stamp-icon">📊</span>No attendance recorded yet for this range.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="view" id="view-settings">
+    <div class="panel">
+      <div class="panel-head"><div><h2>Settings</h2><p>Staff-only: manage departments, class hours, access PIN, and backups.</p></div></div>
+      <div class="panel-body">
+
+        <div class="settings-block">
+          <h3>Departments</h3>
+          <p class="hint">Used on student profiles and as filters throughout the app.</p>
+          <div class="date-picker-row">
+            <input type="text" id="newDeptInput" placeholder="e.g. Computer Science" style="flex:1;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;">
+            <button class="btn btn-outline btn-sm" id="addDeptBtn">＋ Add</button>
+          </div>
+          <div class="chip-list" id="deptChipList"></div>
+        </div>
+
+        <div class="settings-block">
+          <h3>Class Hours (Periods)</h3>
+          <p class="hint">Label and time range for each of the day's periods.</p>
+          <div id="classHoursList"></div>
+          <button class="btn btn-outline btn-sm" id="saveHoursBtn" style="margin-top:6px;">Save Class Hours</button>
+        </div>
+
+        <div class="settings-block">
+          <h3>Staff Access PIN</h3>
+          <p class="hint">Locks the app screen on this device until the PIN is entered.</p>
+          <div class="field"><label>Current PIN</label><input type="password" id="currentPinInput" class="mono"></div>
+          <div class="field"><label>New PIN</label><input type="password" id="newPinInput" class="mono" placeholder="4–8 digits"></div>
+          <button class="btn btn-outline btn-sm" id="changePinBtn">Update PIN</button>
+        </div>
+
+        <div class="settings-block">
+          <h3>Backup &amp; Restore</h3>
+          <p class="hint">Export everything to a file regularly — local storage can be cleared by the browser or lost on a bad save.</p>
+          <div class="form-actions">
+            <button class="btn btn-outline btn-sm" id="exportBtn">⬇ Export Backup (.json)</button>
+            <label class="btn btn-outline btn-sm" style="margin:0;">⬆ Import Backup<input type="file" id="importInput" accept="application/json" style="display:none;"></label>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- SHARED READ-ONLY -->
+  <section class="view" id="view-shared">
+    <div class="panel">
+      <div class="panel-head"><div><h2 id="sharedTitle">Shared Attendance Report</h2><p id="sharedSubtitle"></p></div></div>
+      <div class="panel-body">
+        <div id="sharedRoster"></div>
+        <div class="table-wrap"><table id="sharedTable"></table></div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<div class="modal-overlay" id="studentModalOverlay">
+  <div class="modal">
+    <div class="modal-head"><h3 id="studentModalTitle">Add Student</h3><button class="icon-btn" id="closeStudentModal">✕</button></div>
+    <div class="modal-body">
+      <div class="field"><label>Photo</label>
+        <div class="photo-row"><img class="photo-preview" id="photoPreview" alt="preview"><input type="file" id="photoInput" accept="image/*"></div>
+      </div>
+      <div class="field"><label>Full Name</label><input type="text" id="nameInput" placeholder="e.g. Ananya Sharma"></div>
+      <div class="field"><label>Register Number</label><input type="text" id="regInput" class="mono" placeholder="e.g. 21CS045"></div>
+      <div class="field"><label>Department</label><select id="deptInput"><option value="">— Select —</option></select></div>
+      <div class="field"><label>Parent's Phone Number</label><input type="tel" id="parentPhoneInput" class="mono" placeholder="e.g. +919876543210"></div>
+      <div class="form-actions">
+        <button class="btn btn-primary" id="saveStudentBtn">Save Student</button>
+        <button class="btn btn-outline" id="cancelStudentBtn">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="showModalOverlay">
+  <div class="modal"><div class="modal-head"><h3 id="showModalTitle">Attendance</h3><button class="icon-btn" id="closeShowModal">✕</button></div><div class="modal-body" id="showModalBody"></div></div>
+</div>
+
+<div class="modal-overlay" id="shareModalOverlay">
+  <div class="modal">
+    <div class="modal-head"><h3>Share Report Link</h3><button class="icon-btn" id="closeShareModal">✕</button></div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:#5B7285;margin-top:0;">Anyone with this link can view a read-only snapshot (no editing, no photos, no PIN needed).</p>
+      <div class="field"><input type="text" id="shareLinkInput" class="mono" readonly></div>
+      <div class="form-actions"><button class="btn btn-primary" id="copyShareLinkBtn">Copy Link</button></div>
+    </div>
+  </div>
+</div>
+
+<div class="stamp-toast" id="stampToast">SAVED ✓</div>
+<footer>Roll Call · data stays on this device in local storage</footer>
+
+</div><!-- /appRoot -->
+
+<script>
+/* ============ Storage keys ============ */
+const LS_STUDENTS='rollcall_students', LS_ATTENDANCE='rollcall_attendance', LS_HOLIDAYS='rollcall_holidays',
+      LS_NOTIFIED='rollcall_notified', LS_LAST_DATE='rollcall_last_date', LS_LAST_PERIOD='rollcall_last_period',
+      LS_DEPARTMENTS='rollcall_departments', LS_CLASS_HOURS='rollcall_class_hours', LS_PIN='rollcall_pin',
+      SS_AUTHED='rollcall_authed';
+
+/* ---- Safe storage wrapper: every write is verified; failures alert instead of silently vanishing ---- */
+function safeSet(key, value){
+  try{
+    localStorage.setItem(key, value);
+    if(localStorage.getItem(key) !== value){
+      alert('Save did not verify for "'+key+'". Your browser storage may be full or in a private/incognito mode that limits storage. Please free up space or switch out of private browsing, then try again. Use Settings → Export Backup often to avoid losing data.');
+      return false;
+    }
+    return true;
+  }catch(e){
+    alert('Could not save data (storage error: '+e.message+'). This usually means the browser storage is full or blocked (private/incognito mode). Please export a backup from Settings when possible, and avoid private browsing for this app.');
+    return false;
+  }
+}
+function loadJSON(key, fallback){ try{ const v = JSON.parse(localStorage.getItem(key)); return v===null||v===undefined ? fallback : v; }catch(e){ return fallback; } }
+function saveJSON(key, obj){ return safeSet(key, JSON.stringify(obj)); }
+
+function loadStudents(){ return loadJSON(LS_STUDENTS, []); }
+function saveStudents(list){ return saveJSON(LS_STUDENTS, list); }
+function loadAttendance(){ return loadJSON(LS_ATTENDANCE, {}); }
+function saveAttendanceData(obj){ return saveJSON(LS_ATTENDANCE, obj); }
+function loadHolidays(){ return loadJSON(LS_HOLIDAYS, {}); }
+function saveHolidays(obj){ return saveJSON(LS_HOLIDAYS, obj); }
+function getNotified(){ return loadJSON(LS_NOTIFIED, {}); }
+function saveNotified(obj){ return saveJSON(LS_NOTIFIED, obj); }
+function loadDepartments(){ return loadJSON(LS_DEPARTMENTS, ['CSE','ECE','EEE','MECH','CIVIL','IT']); }
+function saveDepartments(list){ return saveJSON(LS_DEPARTMENTS, list); }
+function loadClassHours(){
+  return loadJSON(LS_CLASS_HOURS, Array.from({length:8},(_,i)=>({label:'Period '+(i+1), time:''})));
+}
+function saveClassHours(list){ return saveJSON(LS_CLASS_HOURS, list); }
+
+let students = loadStudents();
+let attendance = loadAttendance();       // { date: { periodIdx: { studentId: 'P'|'A' } } }
+let holidays = loadHolidays();           // { date: true }
+let departments = loadDepartments();
+let classHours = loadClassHours();       // [{label,time}, ... up to 8]
+let editingStudentId = null;
+let pendingPhotoData = null;
+
+/* ============ Staff PIN gate ============ */
+const loginScreen = document.getElementById('loginScreen');
+const appRoot = document.getElementById('appRoot');
+function currentPin(){ return localStorage.getItem(LS_PIN) || ''; }
+function isAuthed(){ return sessionStorage.getItem(SS_AUTHED)==='yes'; }
+
+function initAuthGate(){
+  const params = new URLSearchParams(location.search);
+  if(params.get('shared')){ appRoot.style.display='block'; loginScreen.style.display='none'; return; } // shared links skip login
+  const pin = currentPin();
+  if(!pin){
+    document.getElementById('loginTitle').textContent = 'Set a Staff PIN';
+    document.getElementById('loginSubtitle').textContent = 'Choose a 4–8 digit PIN staff will use to open this app on this device.';
+    loginScreen.style.display='flex'; appRoot.style.display='none';
+    return;
+  }
+  if(isAuthed()){ loginScreen.style.display='none'; appRoot.style.display='block'; return; }
+  document.getElementById('loginTitle').textContent = 'Staff Login';
+  document.getElementById('loginSubtitle').textContent = 'Enter the staff PIN to open Roll Call.';
+  loginScreen.style.display='flex'; appRoot.style.display='none';
+}
+
+document.getElementById('pinSubmitBtn').addEventListener('click', ()=>{
+  const entered = document.getElementById('pinInput').value.trim();
+  const pin = currentPin();
+  const err = document.getElementById('loginError');
+  if(!pin){
+    if(entered.length<4){ err.textContent='PIN must be at least 4 digits.'; err.style.display='block'; return; }
+    if(!safeSet(LS_PIN, entered)) return;
+    sessionStorage.setItem(SS_AUTHED,'yes');
+    loginScreen.style.display='none'; appRoot.style.display='block';
+    bootApp();
+    return;
+  }
+  if(entered===pin){
+    sessionStorage.setItem(SS_AUTHED,'yes');
+    err.style.display='none';
+    loginScreen.style.display='none'; appRoot.style.display='block';
+    bootApp();
+  } else {
+    err.textContent='Incorrect PIN. Try again.'; err.style.display='block';
+  }
+});
+document.getElementById('pinInput').addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('pinSubmitBtn').click(); });
+
+/* ============ Utils ============ */
+function uid(){ return 's_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function fmtDate(d){ const dt=new Date(d+'T00:00:00'); return dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); }
+function last15Dates(offset){
+  offset = offset||0;
+  const arr=[]; const base=new Date(); base.setDate(base.getDate()-(offset*15));
+  for(let i=14;i>=0;i--){ const d=new Date(base); d.setDate(base.getDate()-i); arr.push(d.toISOString().slice(0,10)); }
+  return arr;
+}
+function initials(name){ return name.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
+function escapeHtml(str){ return (str||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function showStamp(text){ const t=document.getElementById('stampToast'); t.textContent=text; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1400); }
+function pctClass(p){ if(p>=85) return 'pct-good'; if(p>=60) return 'pct-warn'; return 'pct-bad'; }
+
+/* Percentage now counts every PERIOD across the given dates, not just days */
+function studentPercentage(studentId, dates){
+  let marked=0, present=0;
+  dates.forEach(d=>{
+    if(holidays[d]) return;
+    const dayRec = attendance[d];
+    if(!dayRec) return;
+    Object.keys(dayRec).forEach(periodIdx=>{
+      const rec = dayRec[periodIdx];
+      if(rec && rec[studentId]){ marked++; if(rec[studentId]==='P') present++; }
+    });
+  });
+  if(marked===0) return null;
+  return Math.round((present/marked)*100);
+}
+function overallPercentage(studentId){ return studentPercentage(studentId, Object.keys(attendance)); }
+function dayPeriodsSummary(date, studentId){
+  if(holidays[date]) return null;
+  const dayRec = attendance[date];
+  if(!dayRec) return null;
+  let marked=0, present=0;
+  Object.keys(dayRec).forEach(pIdx=>{ const rec=dayRec[pIdx]; if(rec && rec[studentId]){ marked++; if(rec[studentId]==='P') present++; } });
+  if(marked===0) return null;
+  return {present, marked};
+}
+
+function populateDeptSelect(sel, includeAll){
+  const current = sel.value;
+  sel.innerHTML = includeAll ? '<option value="">All Departments</option>' : '<option value="">— Select —</option>';
+  departments.forEach(d=>{ const o=document.createElement('option'); o.value=d; o.textContent=d; sel.appendChild(o); });
+  if([...sel.options].some(o=>o.value===current)) sel.value = current;
+}
+function refreshDeptSelects(){
+  populateDeptSelect(document.getElementById('deptInput'), false);
+  populateDeptSelect(document.getElementById('studentDeptFilter'), true);
+  populateDeptSelect(document.getElementById('attendanceDeptFilter'), true);
+  populateDeptSelect(document.getElementById('reportDeptFilter'), true);
+}
+
+/* ============ Tabs ============ */
+document.getElementById('tabNav').addEventListener('click', e=>{
+  const btn = e.target.closest('.tab-btn');
+  if(!btn) return;
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('main > .view, #view-shared').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-'+btn.dataset.view).classList.add('active');
+  if(btn.dataset.view==='attendance') renderAttendanceView();
+  if(btn.dataset.view==='reports') renderReportsView();
+  if(btn.dataset.view==='settings') renderSettingsView();
+});
+
+/* ============ Students CRUD ============ */
+function renderStudents(){
+  const grid = document.getElementById('studentGrid');
+  const empty = document.getElementById('studentsEmpty');
+  const deptFilter = document.getElementById('studentDeptFilter').value;
+  const filtered = deptFilter ? students.filter(s=>s.department===deptFilter) : students;
+  grid.innerHTML='';
+  if(students.length===0){ empty.style.display='block'; grid.style.display='none'; return; }
+  empty.style.display='none'; grid.style.display='grid';
+  if(filtered.length===0){ grid.innerHTML = '<p style="color:#6C8499;font-size:13px;">No students in this department.</p>'; return; }
+  filtered.forEach(s=>{
+    const card = document.createElement('div');
+    card.className='student-card';
+    const pct = overallPercentage(s.id);
+    card.innerHTML = `
+      <div class="card-actions">
+        <button class="icon-btn" data-edit="${s.id}" title="Edit">✎</button>
+        <button class="icon-btn" data-del="${s.id}" title="Delete">🗑</button>
+      </div>
+      ${s.photo ? `<img class="avatar" src="${s.photo}" alt="${s.name}">` : `<div class="avatar-fallback">${initials(s.name)}</div>`}
+      <div class="student-info">
+        <h3>${escapeHtml(s.name)}</h3>
+        <span class="reg-badge mono">${escapeHtml(s.regNo)}</span>${s.department ? `<span class="dept-badge">${escapeHtml(s.department)}</span>`:''}
+        ${s.parentPhone ? `<div style="margin-top:4px;font-size:11px;color:#5B7285;">📞 ${escapeHtml(s.parentPhone)}</div>` : ''}
+        <div style="margin-top:6px;"><span class="pct-pill ${pct===null?'':pctClass(pct)}">${pct===null?'No data yet':pct+'% overall'}</span></div>
+      </div>`;
+    grid.appendChild(card);
+  });
+}
+document.getElementById('studentDeptFilter').addEventListener('change', renderStudents);
+
+document.getElementById('studentGrid').addEventListener('click', e=>{
+  const editId = e.target.closest('[data-edit]');
+  const delId = e.target.closest('[data-del]');
+  if(editId) openStudentModal(editId.dataset.edit);
+  if(delId){
+    const s = students.find(x=>x.id===delId.dataset.del);
+    if(confirm(`Remove ${s.name} from the roster? Their past attendance records will be kept but hidden.`)){
+      students = students.filter(x=>x.id!==delId.dataset.del);
+      if(saveStudents(students)) renderStudents();
+    }
+  }
+});
+
+function openStudentModal(id){
+  editingStudentId = id || null;
+  pendingPhotoData = null;
+  refreshDeptSelects();
+  const overlay = document.getElementById('studentModalOverlay');
+  document.getElementById('studentModalTitle').textContent = id ? 'Edit Student' : 'Add Student';
+  const preview = document.getElementById('photoPreview');
+  if(id){
+    const s = students.find(x=>x.id===id);
+    document.getElementById('nameInput').value = s.name;
+    document.getElementById('regInput').value = s.regNo;
+    document.getElementById('parentPhoneInput').value = s.parentPhone || '';
+    document.getElementById('deptInput').value = s.department || '';
+    pendingPhotoData = s.photo || null;
+    if(s.photo){ preview.src=s.photo; preview.textContent=''; } else { preview.removeAttribute('src'); preview.textContent='No photo'; }
+  } else {
+    document.getElementById('nameInput').value='';
+    document.getElementById('regInput').value='';
+    document.getElementById('parentPhoneInput').value='';
+    document.getElementById('deptInput').value='';
+    preview.removeAttribute('src'); preview.textContent='No photo';
+  }
+  document.getElementById('photoInput').value='';
+  overlay.classList.add('active');
+}
+document.getElementById('openAddStudent').addEventListener('click', ()=>openStudentModal(null));
+document.getElementById('closeStudentModal').addEventListener('click', closeStudentModal);
+document.getElementById('cancelStudentBtn').addEventListener('click', closeStudentModal);
+function closeStudentModal(){ document.getElementById('studentModalOverlay').classList.remove('active'); }
+
+document.getElementById('photoInput').addEventListener('change', e=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    const img = new Image();
+    img.onload = ()=>{
+      const size=110; // kept small to reduce local-storage quota pressure (a common cause of "later saves silently failing")
+      const canvas = document.createElement('canvas');
+      canvas.width=size; canvas.height=size;
+      const ctx = canvas.getContext('2d');
+      const scale = Math.max(size/img.width, size/img.height);
+      const w=img.width*scale, h=img.height*scale;
+      ctx.drawImage(img, (size-w)/2, (size-h)/2, w, h);
+      pendingPhotoData = canvas.toDataURL('image/jpeg',0.65);
+      const preview = document.getElementById('photoPreview');
+      preview.src = pendingPhotoData; preview.textContent='';
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+document.getElementById('saveStudentBtn').addEventListener('click', ()=>{
+  const name = document.getElementById('nameInput').value.trim();
+  const regNo = document.getElementById('regInput').value.trim();
+  const parentPhone = document.getElementById('parentPhoneInput').value.trim();
+  const department = document.getElementById('deptInput').value;
+  if(!name || !regNo){ alert('Please enter both name and register number.'); return; }
+
+  const prevStudents = students; // keep a copy in case save fails, so UI/memory doesn't drift from storage
+  let nextStudents;
+  if(editingStudentId){
+    nextStudents = students.map(s => s.id===editingStudentId ? {...s, name, regNo, photo:pendingPhotoData, parentPhone, department} : s);
+  } else {
+    nextStudents = [...students, { id: uid(), name, regNo, photo: pendingPhotoData, parentPhone, department }];
+  }
+  if(saveStudents(nextStudents)){
+    students = nextStudents;
+    renderStudents();
+    closeStudentModal();
+    showStamp('SAVED ✓');
+  } else {
+    students = prevStudents; // save failed and was already alerted — don't let in-memory state drift from storage
+  }
+});
+
+/* ============ Mark Attendance ============ */
+const dateInput = document.getElementById('attendanceDate');
+dateInput.max = todayStr();
+let selectedPeriod = 0;
+
+function renderPeriodTabs(){
+  const wrap = document.getElementById('periodTabs');
+  wrap.innerHTML='';
+  classHours.forEach((ch,idx)=>{
+    const b = document.createElement('button');
+    b.className = 'period-btn' + (idx===selectedPeriod ? ' active':'');
+    b.textContent = ch.label || ('Period '+(idx+1));
+    b.dataset.period = idx;
+    wrap.appendChild(b);
+  });
+}
+document.getElementById('periodTabs').addEventListener('click', e=>{
+  const b = e.target.closest('.period-btn');
+  if(!b) return;
+  selectedPeriod = Number(b.dataset.period);
+  localStorage.setItem(LS_LAST_PERIOD, String(selectedPeriod));
+  renderPeriodTabs();
+  renderAttendanceView();
+});
+
+dateInput.addEventListener('change', ()=>{
+  localStorage.setItem(LS_LAST_DATE, dateInput.value);
+  renderAttendanceView();
+});
+document.getElementById('attendanceDeptFilter').addEventListener('change', renderAttendanceView);
+
+let draftMarks = {};
+
+function renderAttendanceView(){
+  const list = document.getElementById('attendanceList');
+  const empty = document.getElementById('attendanceEmpty');
+  const saveBar = document.getElementById('attendanceSaveBar');
+  const leaveBtn = document.getElementById('leaveToggleBtn');
+  list.innerHTML='';
+
+  const date = dateInput.value || todayStr();
+  const isHoliday = !!holidays[date];
+  leaveBtn.classList.toggle('on', isHoliday);
+  leaveBtn.textContent = isHoliday ? '🏖 College Leave (tap to undo)' : '🏖 Mark as College Leave';
+  document.getElementById('periodTabs').style.display = isHoliday ? 'none' : 'flex';
+
+  if(isHoliday){
+    empty.style.display='none'; saveBar.style.display='none';
+    document.getElementById('dateEditNote').textContent = `${fmtDate(date)} is marked as a college leave day — no periods needed.`;
+    list.innerHTML = `<div class="leave-state">🏖 No classes on ${fmtDate(date)}<br><span style="font-size:12px;font-weight:500;">Marked as a college leave day — excluded from attendance %.</span></div>`;
+    return;
+  }
+
+  const deptFilter = document.getElementById('attendanceDeptFilter').value;
+  const roster = deptFilter ? students.filter(s=>s.department===deptFilter) : students;
+
+  if(students.length===0){ empty.style.display='block'; saveBar.style.display='none'; return; }
+  if(roster.length===0){ empty.style.display='block'; document.querySelector('#attendanceEmpty').innerHTML = '<span class="stamp-icon">🧑‍🎓</span>No students in this department.'; saveBar.style.display='none'; return; }
+  empty.style.display='none'; saveBar.style.display='flex';
+
+  const periodLabel = (classHours[selectedPeriod] && classHours[selectedPeriod].label) || ('Period '+(selectedPeriod+1));
+  const existing = (attendance[date] && attendance[date][selectedPeriod]) || {};
+  const hasExisting = Object.keys(existing).length>0;
+  const isToday = date === todayStr();
+  document.getElementById('dateEditNote').textContent = hasExisting
+    ? `Editing saved entries for ${periodLabel} on ${fmtDate(date)}${isToday?' (today)':''} — change and re-save to update them.`
+    : `New entry for ${periodLabel} on ${fmtDate(date)}${isToday?' (today)':''}.`;
+
+  draftMarks = {};
+  roster.forEach(s=>{ draftMarks[s.id] = existing[s.id] || 'P'; });
+
+  roster.forEach(s=>{
+    const row = document.createElement('div');
+    row.className='roll-row';
+    row.innerHTML = `
+      ${s.photo ? `<img class="avatar" src="${s.photo}" alt="${s.name}">` : `<div class="avatar-fallback">${initials(s.name)}</div>`}
+      <div class="student-info">
+        <h3 style="margin:0 0 2px 0;font-size:14.5px;">${escapeHtml(s.name)}</h3>
+        <span class="reg-badge mono">${escapeHtml(s.regNo)}</span>${s.department?`<span class="dept-badge">${escapeHtml(s.department)}</span>`:''}
+      </div>
+      <div class="toggle-group" data-student="${s.id}">
+        <button class="toggle-btn present ${draftMarks[s.id]==='P'?'on':''}" data-mark="P">PRESENT</button>
+        <button class="toggle-btn absent ${draftMarks[s.id]==='A'?'on':''}" data-mark="A">ABSENT</button>
+      </div>`;
+    list.appendChild(row);
+  });
+  updateAttendanceSummary();
+}
+
+document.getElementById('leaveToggleBtn').addEventListener('click', ()=>{
+  const date = dateInput.value || todayStr();
+  const nextHolidays = {...holidays};
+  let nextAttendance = attendance;
+  if(nextHolidays[date]){
+    delete nextHolidays[date];
+  } else {
+    nextHolidays[date] = true;
+    nextAttendance = {...attendance};
+    delete nextAttendance[date];
+  }
+  if(saveHolidays(nextHolidays)){
+    holidays = nextHolidays;
+    if(nextAttendance !== attendance){ if(saveAttendanceData(nextAttendance)) attendance = nextAttendance; }
+    renderAttendanceView();
+    showStamp(holidays[date] ? 'MARKED LEAVE ✓' : 'LEAVE REMOVED');
+  }
+});
+
+document.getElementById('attendanceList').addEventListener('click', e=>{
+  const btn = e.target.closest('.toggle-btn');
+  if(!btn) return;
+  const group = btn.closest('.toggle-group');
+  const sid = group.dataset.student;
+  draftMarks[sid] = btn.dataset.mark;
+  group.querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+  updateAttendanceSummary();
+});
+
+function updateAttendanceSummary(){
+  const vals = Object.values(draftMarks);
+  const present = vals.filter(v=>v==='P').length;
+  const absent = vals.filter(v=>v==='A').length;
+  document.getElementById('attendanceSummary').textContent = `${present} present · ${absent} absent · ${vals.length} total`;
+}
+
+document.getElementById('saveAttendanceBtn').addEventListener('click', ()=>{
+  const date = dateInput.value || todayStr();
+  const nextAttendance = {...attendance, [date]: {...(attendance[date]||{}), [selectedPeriod]: {...draftMarks}}};
+  if(saveAttendanceData(nextAttendance)){
+    attendance = nextAttendance;
+    showStamp('SAVED ✓');
+    renderAttendanceView();
+  }
+});
+
+/* ============ Reports ============ */
+let reportOffset = 0;
+document.getElementById('prevPeriodBtn').addEventListener('click', ()=>{ reportOffset += 1; renderReportsView(); });
+document.getElementById('nextPeriodBtn').addEventListener('click', ()=>{ if(reportOffset>0){ reportOffset -= 1; renderReportsView(); } });
+document.getElementById('currentPeriodBtn').addEventListener('click', ()=>{ reportOffset = 0; renderReportsView(); });
+document.getElementById('reportDeptFilter').addEventListener('change', renderReportsView);
+document.getElementById('thresholdInput').addEventListener('input', ()=>{
+  if(document.getElementById('view-reports').classList.contains('active')) renderReportsView();
+});
+
+function renderReportsView(){
+  const dates = last15Dates(reportOffset);
+  document.getElementById('reportRangeLabel').textContent = reportOffset===0
+    ? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} (current 15 days, all periods combined)`
+    : `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} (${reportOffset*15} days ago)`;
+  document.getElementById('nextPeriodBtn').disabled = reportOffset===0;
+  document.getElementById('currentPeriodBtn').style.display = reportOffset===0 ? 'none' : 'inline-flex';
+
+  const deptFilter = document.getElementById('reportDeptFilter').value;
+  const roster = deptFilter ? students.filter(s=>s.department===deptFilter) : students;
+
+  const rosterWrap = document.getElementById('rosterReport');
+  const table = document.getElementById('reportTable');
+  const empty = document.getElementById('reportsEmpty');
+  rosterWrap.innerHTML=''; table.innerHTML='';
+
+  const anyRecords = Object.keys(attendance).length>0;
+  if(roster.length===0 || !anyRecords){
+    empty.style.display='block';
+    document.querySelector('#view-reports .table-wrap').style.display='none';
+    rosterWrap.style.display='none';
+    document.getElementById('shareReportBtn').disabled = true;
+    document.getElementById('cycleBanner').style.display='none';
+    document.getElementById('parentNotifyPanel').style.display='none';
+    return;
+  }
+  empty.style.display='none';
+  document.querySelector('#view-reports .table-wrap').style.display='block';
+  rosterWrap.style.display='block';
+  document.getElementById('shareReportBtn').disabled = false;
+
+  roster.forEach(s=>{
+    const pct = studentPercentage(s.id, dates);
+    const row = document.createElement('div');
+    row.className='roster-report-row';
+    row.innerHTML = `
+      ${s.photo ? `<img class="avatar" src="${s.photo}" alt="${s.name}">` : `<div class="avatar-fallback">${initials(s.name)}</div>`}
+      <div class="student-info">
+        <h3 style="margin:0 0 2px 0;font-size:14.5px;">${escapeHtml(s.name)}</h3>
+        <span class="reg-badge mono">${escapeHtml(s.regNo)}</span>${s.department?`<span class="dept-badge">${escapeHtml(s.department)}</span>`:''}
+      </div>
+      <span class="pct-pill ${pct===null?'':pctClass(pct)}">${pct===null?'—':pct+'%'}</span>
+      <button class="btn btn-outline btn-sm" data-show="${s.id}">Show Attendance</button>
+    `;
+    rosterWrap.appendChild(row);
+  });
+
+  let thead = '<thead><tr><th>Student</th>';
+  dates.forEach(d=> thead += `<th>${fmtDate(d).replace(', ',' ')}</th>`);
+  thead += '<th>%</th></tr></thead>';
+
+  let tbody = '<tbody>';
+  roster.forEach(s=>{
+    tbody += `<tr><td>${escapeHtml(s.name)}<br><span class="reg-badge mono" style="margin-top:2px;">${escapeHtml(s.regNo)}</span></td>`;
+    dates.forEach(d=>{
+      if(holidays[d]){ tbody += `<td class="mark-H">H</td>`; return; }
+      const summary = dayPeriodsSummary(d, s.id);
+      if(!summary){ tbody += `<td class="mark-dash">–</td>`; return; }
+      const cls = summary.present===summary.marked ? 'mark-P' : (summary.present===0 ? 'mark-A' : '');
+      tbody += `<td class="${cls}">${summary.present}/${summary.marked}</td>`;
+    });
+    const pct = studentPercentage(s.id, dates);
+    tbody += `<td><span class="pct-pill ${pct===null?'':pctClass(pct)}">${pct===null?'—':pct+'%'}</span></td></tr>`;
+  });
+  tbody += '</tbody>';
+  table.innerHTML = thead + tbody;
+
+  renderCycleBanner(dates, roster);
+  renderParentNotifyPanel(dates, roster);
+}
+
+function renderCycleBanner(dates, roster){
+  const banner = document.getElementById('cycleBanner');
+  const markedDays = dates.filter(d => attendance[d] && Object.keys(attendance[d]).length>0).length;
+  const complete = markedDays === dates.length && reportOffset===0;
+  const threshold = Number(document.getElementById('thresholdInput').value) || 0;
+  const low = roster.map(s=>({ s, pct: studentPercentage(s.id, dates) })).filter(x=> x.pct!==null && x.pct < threshold);
+
+  if(!complete || low.length===0){ banner.style.display='none'; return; }
+  banner.style.display='flex';
+  banner.innerHTML = `
+    <div><strong>15-day cycle complete</strong><span>${low.length} student${low.length>1?'s':''} below ${threshold}% attendance — ready to notify</span></div>
+    <div class="send-actions">
+      <button class="btn btn-sm btn-whatsapp" id="sendWhatsappBtn">📲 Send via WhatsApp</button>
+      <button class="btn btn-sm btn-sms" id="sendSmsBtn">✉️ Send via SMS</button>
+    </div>`;
+  document.getElementById('sendWhatsappBtn').addEventListener('click', ()=> sendLowAttendance(dates, roster, 'whatsapp'));
+  document.getElementById('sendSmsBtn').addEventListener('click', ()=> sendLowAttendance(dates, roster, 'sms'));
+}
+function buildLowAttendanceMessage(dates, roster, threshold){
+  const low = roster.map(s=>({ s, pct: studentPercentage(s.id, dates) })).filter(x=> x.pct!==null && x.pct < threshold).sort((a,b)=>a.pct-b.pct);
+  let msg = `📋 15-Day Attendance Report (${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])})\nStudents below ${threshold}% attendance:\n\n`;
+  low.forEach(x=>{ msg += `${x.s.regNo} - ${x.s.name}: ${x.pct}%\n`; });
+  return msg;
+}
+function sendLowAttendance(dates, roster, channel){
+  const threshold = Number(document.getElementById('thresholdInput').value) || 0;
+  const text = buildLowAttendanceMessage(dates, roster, threshold);
+  const encoded = encodeURIComponent(text);
+  if(channel==='whatsapp'){ window.open(`https://wa.me/?text=${encoded}`, '_blank'); }
+  else {
+    const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+    window.location.href = isIOS ? `sms:&body=${encoded}` : `sms:?body=${encoded}`;
+  }
+}
+
+function renderParentNotifyPanel(dates, roster){
+  const panel = document.getElementById('parentNotifyPanel');
+  const markedDays = dates.filter(d => attendance[d] && Object.keys(attendance[d]).length>0).length;
+  const complete = markedDays === dates.length && reportOffset===0;
+  const withPhone = roster.filter(s=>s.parentPhone);
+  if(!complete || withPhone.length===0){ panel.style.display='none'; return; }
+
+  const cycleKey = dates[dates.length-1];
+  const notifiedMap = getNotified();
+  const sentList = notifiedMap[cycleKey] || [];
+  if(notifiedMap[cycleKey+'_dismissed']){ panel.style.display='none'; return; }
+
+  panel.style.display='block';
+  panel.className='parent-notify-panel';
+  let rows='';
+  withPhone.forEach(s=>{
+    const pct = studentPercentage(s.id, dates);
+    const sent = sentList.includes(s.id);
+    rows += `<div class="pn-row">
+      <div class="pn-info"><strong>${escapeHtml(s.name)}</strong> <span class="reg-badge mono">${escapeHtml(s.regNo)}</span><div class="pn-phone">📞 ${escapeHtml(s.parentPhone)}</div></div>
+      <span class="pct-pill ${pct===null?'':pctClass(pct)}">${pct===null?'—':pct+'%'}</span>
+      ${sent ? `<span class="pn-sent">Sent ✓</span>` : `<button class="btn btn-sm btn-sms" data-notify="${s.id}">✉️ Send SMS</button>`}
+    </div>`;
+  });
+  panel.innerHTML = `
+    <div class="pn-head"><div><strong>Notify Parents</strong><br><span>15-day cycle complete — tap to text each parent their child's attendance %.</span></div>
+    <button class="btn btn-ghost btn-sm" id="dismissNotifyBtn">Dismiss until next cycle</button></div>${rows}`;
+
+  panel.querySelectorAll('[data-notify]').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const sid = btn.dataset.notify;
+      const s = students.find(x=>x.id===sid);
+      const pct = studentPercentage(sid, dates);
+      const msg = `Attendance update: ${s.name} (${s.regNo}) was present ${pct===null?'—':pct+'%'} of the last 15 school days (${fmtDate(dates[0])} - ${fmtDate(dates[dates.length-1])}).`;
+      const encoded = encodeURIComponent(msg);
+      const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+      const phone = s.parentPhone.replace(/[^\d+]/g,'');
+      window.location.href = isIOS ? `sms:${phone}&body=${encoded}` : `sms:${phone}?body=${encoded}`;
+      const map = getNotified();
+      map[cycleKey] = [...(map[cycleKey]||[]), sid];
+      if(saveNotified(map)) renderReportsView();
+    });
+  });
+  const dismissBtn = document.getElementById('dismissNotifyBtn');
+  if(dismissBtn) dismissBtn.addEventListener('click', ()=>{
+    const map = getNotified(); map[cycleKey+'_dismissed'] = true;
+    if(saveNotified(map)) renderReportsView();
+  });
+}
+
+document.getElementById('rosterReport').addEventListener('click', e=>{
+  const btn = e.target.closest('[data-show]');
+  if(!btn) return;
+  openShowModal(btn.dataset.show);
+});
+function openShowModal(studentId){
+  const s = students.find(x=>x.id===studentId);
+  const dates = last15Dates(reportOffset);
+  const pct = studentPercentage(studentId, dates);
+  document.getElementById('showModalTitle').textContent = s.name + "'s Attendance";
+  let rows='';
+  dates.slice().reverse().forEach(d=>{
+    let label;
+    if(holidays[d]) label = '<span class="mark-H">College Leave</span>';
+    else{
+      const summary = dayPeriodsSummary(d, studentId);
+      label = summary ? `<span class="${summary.present===summary.marked?'mark-P':(summary.present===0?'mark-A':'')}">${summary.present}/${summary.marked} periods present</span>` : '<span class="mark-dash">Not marked</span>';
+    }
+    rows += `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:13.5px;"><span>${fmtDate(d)}</span>${label}</div>`;
+  });
+  document.getElementById('showModalBody').innerHTML = `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
+      ${s.photo ? `<img class="avatar" src="${s.photo}" style="width:48px;height:48px;">` : `<div class="avatar-fallback">${initials(s.name)}</div>`}
+      <div><div style="font-weight:600;">${escapeHtml(s.name)} <span class="reg-badge mono">${escapeHtml(s.regNo)}</span></div>
+      <span class="pct-pill ${pct===null?'':pctClass(pct)}">${pct===null?'No data':pct+'% present (15 days)'}</span></div>
+    </div>${rows}`;
+  document.getElementById('showModalOverlay').classList.add('active');
+}
+document.getElementById('closeShowModal').addEventListener('click', ()=>document.getElementById('showModalOverlay').classList.remove('active'));
+
+document.getElementById('shareReportBtn').addEventListener('click', ()=>{
+  const dates = last15Dates(reportOffset);
+  const deptFilter = document.getElementById('reportDeptFilter').value;
+  const roster = deptFilter ? students.filter(s=>s.department===deptFilter) : students;
+  const snapshot = {
+    v:2, generated: todayStr(), dates,
+    holidays: dates.map(d=>!!holidays[d]),
+    students: roster.map(s=>({
+      name:s.name, regNo:s.regNo, department:s.department||'',
+      daily: dates.map(d=>{ if(holidays[d]) return null; return dayPeriodsSummary(d, s.id); }),
+      pct: studentPercentage(s.id, dates)
+    }))
+  };
+  const encoded = btoa(encodeURIComponent(JSON.stringify(snapshot)));
+  const url = `${location.origin}${location.pathname}?shared=${encoded}`;
+  document.getElementById('shareLinkInput').value = url;
+  document.getElementById('shareModalOverlay').classList.add('active');
+});
+document.getElementById('closeShareModal').addEventListener('click', ()=>document.getElementById('shareModalOverlay').classList.remove('active'));
+document.getElementById('copyShareLinkBtn').addEventListener('click', ()=>{
+  const input = document.getElementById('shareLinkInput');
+  input.select();
+  navigator.clipboard?.writeText(input.value).then(()=>showStamp('LINK COPIED ✓')).catch(()=>{ document.execCommand('copy'); showStamp('LINK COPIED ✓'); });
+});
+document.querySelectorAll('.modal-overlay').forEach(ov=> ov.addEventListener('click', e=>{ if(e.target===ov) ov.classList.remove('active'); }));
+
+/* ============ Settings ============ */
+function renderSettingsView(){
+  refreshDeptSelects();
+  const chipList = document.getElementById('deptChipList');
+  chipList.innerHTML='';
+  departments.forEach(d=>{
+    const chip = document.createElement('div'); chip.className='chip';
+    chip.innerHTML = `<span>${escapeHtml(d)}</span><button data-remove-dept="${escapeHtml(d)}">✕</button>`;
+    chipList.appendChild(chip);
+  });
+
+  const hoursList = document.getElementById('classHoursList');
+  hoursList.innerHTML='';
+  classHours.forEach((ch,idx)=>{
+    const row = document.createElement('div'); row.className='hours-row';
+    row.innerHTML = `<input type="text" data-hour-label="${idx}" value="${escapeHtml(ch.label)}" placeholder="Period ${idx+1} label">
+                      <input type="text" data-hour-time="${idx}" value="${escapeHtml(ch.time)}" placeholder="e.g. 9:00–9:50 AM">`;
+    hoursList.appendChild(row);
+  });
+}
+document.getElementById('addDeptBtn').addEventListener('click', ()=>{
+  const input = document.getElementById('newDeptInput');
+  const name = input.value.trim();
+  if(!name) return;
+  if(departments.includes(name)){ input.value=''; return; }
+  const next = [...departments, name];
+  if(saveDepartments(next)){ departments = next; input.value=''; renderSettingsView(); }
+});
+document.getElementById('deptChipList').addEventListener('click', e=>{
+  const btn = e.target.closest('[data-remove-dept]');
+  if(!btn) return;
+  const next = departments.filter(d=>d!==btn.dataset.removeDept);
+  if(saveDepartments(next)){ departments = next; renderSettingsView(); }
+});
+document.getElementById('saveHoursBtn').addEventListener('click', ()=>{
+  const next = classHours.map((ch,idx)=>({
+    label: document.querySelector(`[data-hour-label="${idx}"]`).value.trim() || ('Period '+(idx+1)),
+    time: document.querySelector(`[data-hour-time="${idx}"]`).value.trim()
+  }));
+  if(saveClassHours(next)){ classHours = next; renderPeriodTabs(); showStamp('CLASS HOURS SAVED ✓'); }
+});
+document.getElementById('changePinBtn').addEventListener('click', ()=>{
+  const cur = document.getElementById('currentPinInput').value.trim();
+  const next = document.getElementById('newPinInput').value.trim();
+  if(cur !== currentPin()){ alert('Current PIN is incorrect.'); return; }
+  if(next.length<4){ alert('New PIN must be at least 4 digits.'); return; }
+  if(safeSet(LS_PIN, next)){
+    document.getElementById('currentPinInput').value=''; document.getElementById('newPinInput').value='';
+    showStamp('PIN UPDATED ✓');
+  }
+});
+document.getElementById('exportBtn').addEventListener('click', ()=>{
+  const backup = { students, attendance, holidays, departments, classHours, exportedAt: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(backup,null,2)], {type:'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `rollcall-backup-${todayStr()}.json`;
+  a.click();
+});
+document.getElementById('importInput').addEventListener('change', e=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    try{
+      const data = JSON.parse(ev.target.result);
+      if(!confirm('This will replace all current data on this device with the backup file. Continue?')) return;
+      if(data.students) saveStudents(data.students) && (students = data.students);
+      if(data.attendance) saveAttendanceData(data.attendance) && (attendance = data.attendance);
+      if(data.holidays) saveHolidays(data.holidays) && (holidays = data.holidays);
+      if(data.departments) saveDepartments(data.departments) && (departments = data.departments);
+      if(data.classHours) saveClassHours(data.classHours) && (classHours = data.classHours);
+      renderStudents(); renderSettingsView(); renderPeriodTabs();
+      showStamp('BACKUP RESTORED ✓');
+    }catch(err){ alert('This file could not be read as a valid backup.'); }
+  };
+  reader.readAsText(file);
+});
+
+/* ============ Shared read-only mode ============ */
+function loadSharedFromUrl(){
+  const params = new URLSearchParams(location.search);
+  const data = params.get('shared');
+  if(!data) return false;
+  let snapshot;
+  try{ snapshot = JSON.parse(decodeURIComponent(atob(data))); }catch(e){ return false; }
+
+  document.getElementById('sharedBanner').style.display='block';
+  document.getElementById('appHeader').style.display='none';
+  document.querySelectorAll('main > .view').forEach(v=>v.classList.remove('active'));
+  document.getElementById('view-shared').classList.add('active');
+  document.getElementById('sharedSubtitle').textContent = `${fmtDate(snapshot.dates[0])} – ${fmtDate(snapshot.dates[snapshot.dates.length-1])} · generated ${snapshot.generated}`;
+
+  const rosterWrap = document.getElementById('sharedRoster');
+  rosterWrap.innerHTML='';
+  snapshot.students.forEach(s=>{
+    const row = document.createElement('div'); row.className='roster-report-row';
+    row.innerHTML = `<div class="avatar-fallback">${initials(s.name)}</div>
+      <div class="student-info"><h3 style="margin:0 0 2px 0;font-size:14.5px;">${escapeHtml(s.name)}</h3>
+      <span class="reg-badge mono">${escapeHtml(s.regNo)}</span>${s.department?`<span class="dept-badge">${escapeHtml(s.department)}</span>`:''}</div>
+      <span class="pct-pill ${s.pct===null?'':pctClass(s.pct)}">${s.pct===null?'—':s.pct+'%'}</span>`;
+    rosterWrap.appendChild(row);
+  });
+
+  const table = document.getElementById('sharedTable');
+  let thead = '<thead><tr><th>Student</th>';
+  snapshot.dates.forEach(d=> thead += `<th>${fmtDate(d).replace(', ',' ')}</th>`);
+  thead += '<th>%</th></tr></thead>';
+  let tbody = '<tbody>';
+  snapshot.students.forEach((s,si)=>{
+    tbody += `<tr><td>${escapeHtml(s.name)}<br><span class="reg-badge mono" style="margin-top:2px;">${escapeHtml(s.regNo)}</span></td>`;
+    (s.daily||[]).forEach((day,di)=>{
+      if(snapshot.holidays && snapshot.holidays[di]){ tbody += `<td class="mark-H">H</td>`; return; }
+      if(!day){ tbody += `<td class="mark-dash">–</td>`; return; }
+      const cls = day.present===day.marked ? 'mark-P' : (day.present===0 ? 'mark-A' : '');
+      tbody += `<td class="${cls}">${day.present}/${day.marked}</td>`;
+    });
+    tbody += `<td><span class="pct-pill ${s.pct===null?'':pctClass(s.pct)}">${s.pct===null?'—':s.pct+'%'}</span></td></tr>`;
+  });
+  tbody += '</tbody>';
+  table.innerHTML = thead + tbody;
+  return true;
+}
+
+/* ============ Boot ============ */
+function bootApp(){
+  document.getElementById('todayChip').textContent = fmtDate(todayStr());
+  refreshDeptSelects();
+  selectedPeriod = Number(localStorage.getItem(LS_LAST_PERIOD) || 0);
+  dateInput.value = localStorage.getItem(LS_LAST_DATE) || todayStr();
+  renderPeriodTabs();
+  renderStudents();
+  renderAttendanceView();
+}
+
+if(!loadSharedFromUrl()){
+  initAuthGate();
+  if(appRoot.style.display==='block') bootApp();
+} else {
+  document.getElementById('todayChip').textContent = '';
+}
+</script>
+</body>
+</html>
