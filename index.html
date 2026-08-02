@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Roll Call — Class Attendance Register</title>
+<title>RVS College of Engineering and Technology — Attendance Register</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
@@ -48,7 +48,7 @@
   .header-top{display:flex;align-items:center;justify-content:space-between;max-width:1080px;margin:0 auto;padding-bottom:16px;flex-wrap:wrap;gap:10px;}
   .brand{display:flex;align-items:center;gap:12px;}
   .brand-mark{width:40px;height:40px;border-radius:6px;background:var(--brass);display:flex;align-items:center;justify-content:center;color:var(--ledger-dark);font-weight:700;font-family:'Zilla Slab',serif;font-size:20px;transform:rotate(-4deg);box-shadow:0 2px 0 rgba(0,0,0,0.25);flex-shrink:0;}
-  .brand h1{margin:0;font-size:23px;font-weight:700;letter-spacing:0.2px;}
+  .brand h1{margin:0;font-size:17px;font-weight:700;letter-spacing:0.1px;line-height:1.2;max-width:480px;}
   .brand span{display:block;font-family:'Inter',sans-serif;font-size:11.5px;color:#C7DEF0;letter-spacing:0.12em;text-transform:uppercase;margin-top:2px;}
   .today-chip{font-family:'IBM Plex Mono',monospace;font-size:12.5px;background:rgba(255,255,255,0.08);padding:7px 12px;border-radius:20px;color:#DCEBFA;border:1px solid rgba(255,255,255,0.14);}
   .tabs{max-width:1080px;margin:0 auto;display:flex;gap:4px;flex-wrap:wrap;}
@@ -91,6 +91,8 @@
   .student-info h3{margin:0 0 3px 0;font-size:15px;font-weight:600;line-height:1.25;}
   .reg-badge{display:inline-block;font-size:11px;background:var(--paper-alt);padding:2px 7px;border-radius:5px;color:var(--ledger);border:1px solid var(--line);}
   .dept-badge{display:inline-block;font-size:10.5px;background:var(--ledger-dark);color:#fff;padding:2px 7px;border-radius:5px;margin-left:5px;}
+  .year-badge{display:inline-block;font-size:10.5px;background:var(--brass);color:var(--ledger-dark);padding:2px 7px;border-radius:5px;margin-left:5px;font-weight:700;}
+  .alumni-badge{display:inline-block;font-size:10.5px;background:#8A5E14;color:#fff;padding:2px 7px;border-radius:5px;margin-left:5px;font-weight:700;}
   .card-actions{position:absolute;top:8px;right:8px;display:flex;gap:2px;}
   .icon-btn{background:none;border:none;width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#5B7285;font-size:14px;}
   .icon-btn:hover{background:var(--paper-alt);color:var(--ink);}
@@ -191,7 +193,7 @@
   footer{text-align:center;padding:20px;font-size:11.5px;color:#6C8499;}
 
   @media (max-width:560px){
-    .brand h1{font-size:19px;}
+    .brand h1{font-size:14.5px;}
     .panel-body{padding:14px;}
     .toggle-btn{padding:6px 10px;font-size:11.5px;}
     .hours-row{grid-template-columns:1fr;}
@@ -205,7 +207,7 @@
   <div class="login-card">
     <div class="brand-mark" style="width:44px;height:44px;">R</div>
     <h2 id="loginTitle">Staff Login</h2>
-    <p id="loginSubtitle">Enter the staff PIN to open Roll Call.</p>
+    <p id="loginSubtitle">Enter the staff PIN to open RVS College of Engineering and Technology.</p>
     <input type="password" inputmode="numeric" class="pin-input mono" id="pinInput" maxlength="8" placeholder="••••">
     <p class="login-error" id="loginError">Incorrect PIN. Try again.</p>
     <button class="btn btn-primary btn-full" id="pinSubmitBtn">Unlock</button>
@@ -221,7 +223,7 @@
   <div class="header-top">
     <div class="brand">
       <div class="brand-mark">R</div>
-      <div><h1>Roll Call</h1><span>Class Attendance Register</span></div>
+      <div><h1>RVS College of Engineering and Technology</h1><span>Class Attendance Register</span></div>
     </div>
     <div class="today-chip" id="todayChip"></div>
     <div class="today-chip" id="cloudStatus">☁ Connecting…</div>
@@ -246,6 +248,9 @@
       <div class="panel-body">
         <div class="filter-row">
           <select id="studentDeptFilter"><option value="">All Departments</option></select>
+          <select id="studentYearFilter"><option value="">All Years</option><option>1st Year</option><option>2nd Year</option><option>3rd Year</option><option>Final Year</option></select>
+          <select id="studentSectionFilter"><option value="">All Sections</option><option value="A">Section A</option><option value="B">Section B</option></select>
+          <select id="studentStatusFilter"><option value="active">Active Students</option><option value="passed_out">Passed Out / Alumni</option></select>
         </div>
         <div id="studentGrid"></div>
         <div id="studentsEmpty" class="empty-state" style="display:none;">
@@ -269,6 +274,8 @@
           <div class="period-tabs" id="periodTabs"></div>
           <div class="filter-row">
             <select id="attendanceDeptFilter"><option value="">All Departments</option></select>
+            <select id="attendanceYearFilter"><option value="">All Years</option><option>1st Year</option><option>2nd Year</option><option>3rd Year</option><option>Final Year</option></select>
+            <select id="attendanceSectionFilter"><option value="">All Sections</option><option value="A">Section A</option><option value="B">Section B</option></select>
           </div>
         </div>
       </div>
@@ -300,6 +307,8 @@
           </div>
           <div class="filter-row">
             <select id="reportDeptFilter"><option value="">All Departments</option></select>
+            <select id="reportYearFilter"><option value="">All Years</option><option>1st Year</option><option>2nd Year</option><option>3rd Year</option><option>Final Year</option></select>
+            <select id="reportSectionFilter"><option value="">All Sections</option><option value="A">Section A</option><option value="B">Section B</option></select>
           </div>
         </div>
         <div class="report-controls">
@@ -342,6 +351,26 @@
           <p class="hint">Label and time range for each of the day's periods.</p>
           <div id="classHoursList"></div>
           <button class="btn btn-outline btn-sm" id="saveHoursBtn" style="margin-top:6px;">Save Class Hours</button>
+        </div>
+
+        <div class="settings-block">
+          <h3>Year-End Promotion</h3>
+          <p class="hint">At the end of the academic year, move every student in a year up to the next one. Final Year students are marked Passed Out / Alumni instead — their profile and full attendance history stay saved under a batch name, just hidden from the active roster and attendance marking.</p>
+          <div class="field">
+            <label>Promote students currently in</label>
+            <select id="promoteYearSelect">
+              <option value="1st Year">1st Year → 2nd Year</option>
+              <option value="2nd Year">2nd Year → 3rd Year</option>
+              <option value="3rd Year">3rd Year → Final Year</option>
+              <option value="Final Year">Final Year → Passed Out / Alumni</option>
+            </select>
+          </div>
+          <button class="btn btn-brass btn-sm" id="promoteYearBtn">Promote This Group</button>
+          <p class="hint" style="margin-top:14px;">Made a mistake? Restore a batch back to active Final Year students:</p>
+          <div class="date-picker-row">
+            <select id="restoreBatchSelect" style="flex:1;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;"><option value="">— Select a batch —</option></select>
+            <button class="btn btn-outline btn-sm" id="restoreBatchBtn">Restore to Active</button>
+          </div>
         </div>
 
         <div class="settings-block">
@@ -388,6 +417,14 @@
       <div class="field"><label>Full Name</label><input type="text" id="nameInput" placeholder="e.g. Ananya Sharma"></div>
       <div class="field"><label>Register Number</label><input type="text" id="regInput" class="mono" placeholder="e.g. 21CS045"></div>
       <div class="field"><label>Department</label><select id="deptInput"><option value="">— Select —</option></select></div>
+      <div class="hours-row">
+        <div><label style="display:block;font-size:12.5px;font-weight:600;color:var(--ledger);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">Year</label>
+          <select id="yearInput"><option value="1st Year">1st Year</option><option value="2nd Year">2nd Year</option><option value="3rd Year">3rd Year</option><option value="Final Year">Final Year</option></select>
+        </div>
+        <div><label style="display:block;font-size:12.5px;font-weight:600;color:var(--ledger);margin-bottom:5px;text-transform:uppercase;letter-spacing:0.04em;">Section</label>
+          <select id="sectionInput"><option value="A">A</option><option value="B">B</option></select>
+        </div>
+      </div>
       <div class="field"><label>Parent's Phone Number</label><input type="tel" id="parentPhoneInput" class="mono" placeholder="e.g. +919876543210"></div>
       <div class="form-actions">
         <button class="btn btn-primary" id="saveStudentBtn">Save Student</button>
@@ -413,7 +450,7 @@
 </div>
 
 <div class="stamp-toast" id="stampToast">SAVED ✓</div>
-<footer>Roll Call · data stays on this device in local storage</footer>
+<footer>RVS College of Engineering and Technology · Attendance Register</footer>
 
 </div><!-- /appRoot -->
 
@@ -520,7 +557,7 @@ function initAuthGate(){
   }
   if(isAuthed()){ loginScreen.style.display='none'; appRoot.style.display='block'; return; }
   document.getElementById('loginTitle').textContent = 'Staff Login';
-  document.getElementById('loginSubtitle').textContent = 'Enter the staff PIN to open Roll Call.';
+  document.getElementById('loginSubtitle').textContent = 'Enter the staff PIN to open RVS College of Engineering and Technology.';
   loginScreen.style.display='flex'; appRoot.style.display='none';
 }
 
@@ -615,15 +652,26 @@ document.getElementById('tabNav').addEventListener('click', e=>{
 });
 
 /* ============ Students CRUD ============ */
+function isActive(s){ return (s.status||'active') !== 'passed_out'; }
+
 function renderStudents(){
   const grid = document.getElementById('studentGrid');
   const empty = document.getElementById('studentsEmpty');
   const deptFilter = document.getElementById('studentDeptFilter').value;
-  const filtered = deptFilter ? students.filter(s=>s.department===deptFilter) : students;
+  const yearFilter = document.getElementById('studentYearFilter').value;
+  const sectionFilter = document.getElementById('studentSectionFilter').value;
+  const statusFilter = document.getElementById('studentStatusFilter').value; // 'active' or 'passed_out'
+
+  const filtered = students.filter(s=>
+    (statusFilter==='passed_out' ? !isActive(s) : isActive(s)) &&
+    (!deptFilter || s.department===deptFilter) &&
+    (!yearFilter || s.year===yearFilter) &&
+    (!sectionFilter || s.section===sectionFilter)
+  );
   grid.innerHTML='';
   if(students.length===0){ empty.style.display='block'; grid.style.display='none'; return; }
   empty.style.display='none'; grid.style.display='grid';
-  if(filtered.length===0){ grid.innerHTML = '<p style="color:#6C8499;font-size:13px;">No students in this department.</p>'; return; }
+  if(filtered.length===0){ grid.innerHTML = `<p style="color:#6C8499;font-size:13px;">No ${statusFilter==='passed_out'?'passed-out':'active'} students match these filters.</p>`; return; }
   filtered.forEach(s=>{
     const card = document.createElement('div');
     card.className='student-card';
@@ -637,6 +685,8 @@ function renderStudents(){
       <div class="student-info">
         <h3>${escapeHtml(s.name)}</h3>
         <span class="reg-badge mono">${escapeHtml(s.regNo)}</span>${s.department ? `<span class="dept-badge">${escapeHtml(s.department)}</span>`:''}
+        ${s.year ? `<span class="year-badge">${escapeHtml(s.year)}${s.section?' - '+escapeHtml(s.section):''}</span>`:''}
+        ${!isActive(s) ? `<span class="alumni-badge">🎓 Batch ${escapeHtml(s.batch||'—')}</span>`:''}
         ${s.parentPhone ? `<div style="margin-top:4px;font-size:11px;color:#5B7285;">📞 ${escapeHtml(s.parentPhone)}</div>` : ''}
         <div style="margin-top:6px;"><span class="pct-pill ${pct===null?'':pctClass(pct)}">${pct===null?'No data yet':pct+'% overall'}</span></div>
       </div>`;
@@ -644,6 +694,9 @@ function renderStudents(){
   });
 }
 document.getElementById('studentDeptFilter').addEventListener('change', renderStudents);
+document.getElementById('studentYearFilter').addEventListener('change', renderStudents);
+document.getElementById('studentSectionFilter').addEventListener('change', renderStudents);
+document.getElementById('studentStatusFilter').addEventListener('change', renderStudents);
 
 document.getElementById('studentGrid').addEventListener('click', e=>{
   const editId = e.target.closest('[data-edit]');
@@ -671,6 +724,8 @@ function openStudentModal(id){
     document.getElementById('regInput').value = s.regNo;
     document.getElementById('parentPhoneInput').value = s.parentPhone || '';
     document.getElementById('deptInput').value = s.department || '';
+    document.getElementById('yearInput').value = s.year || '1st Year';
+    document.getElementById('sectionInput').value = s.section || 'A';
     pendingPhotoData = s.photo || null;
     if(s.photo){ preview.src=s.photo; preview.textContent=''; } else { preview.removeAttribute('src'); preview.textContent='No photo'; }
   } else {
@@ -678,6 +733,8 @@ function openStudentModal(id){
     document.getElementById('regInput').value='';
     document.getElementById('parentPhoneInput').value='';
     document.getElementById('deptInput').value='';
+    document.getElementById('yearInput').value='1st Year';
+    document.getElementById('sectionInput').value='A';
     preview.removeAttribute('src'); preview.textContent='No photo';
   }
   document.getElementById('photoInput').value='';
@@ -716,14 +773,16 @@ document.getElementById('saveStudentBtn').addEventListener('click', ()=>{
   const regNo = document.getElementById('regInput').value.trim();
   const parentPhone = document.getElementById('parentPhoneInput').value.trim();
   const department = document.getElementById('deptInput').value;
+  const year = document.getElementById('yearInput').value;
+  const section = document.getElementById('sectionInput').value;
   if(!name || !regNo){ alert('Please enter both name and register number.'); return; }
 
   const prevStudents = students; // keep a copy in case save fails, so UI/memory doesn't drift from storage
   let nextStudents;
   if(editingStudentId){
-    nextStudents = students.map(s => s.id===editingStudentId ? {...s, name, regNo, photo:pendingPhotoData, parentPhone, department} : s);
+    nextStudents = students.map(s => s.id===editingStudentId ? {...s, name, regNo, photo:pendingPhotoData, parentPhone, department, year, section} : s);
   } else {
-    nextStudents = [...students, { id: uid(), name, regNo, photo: pendingPhotoData, parentPhone, department }];
+    nextStudents = [...students, { id: uid(), name, regNo, photo: pendingPhotoData, parentPhone, department, year, section, status:'active', batch:'' }];
   }
   if(saveStudents(nextStudents)){
     students = nextStudents;
@@ -765,6 +824,8 @@ dateInput.addEventListener('change', ()=>{
   renderAttendanceView();
 });
 document.getElementById('attendanceDeptFilter').addEventListener('change', renderAttendanceView);
+document.getElementById('attendanceYearFilter').addEventListener('change', renderAttendanceView);
+document.getElementById('attendanceSectionFilter').addEventListener('change', renderAttendanceView);
 
 let draftMarks = {};
 
@@ -789,10 +850,17 @@ function renderAttendanceView(){
   }
 
   const deptFilter = document.getElementById('attendanceDeptFilter').value;
-  const roster = deptFilter ? students.filter(s=>s.department===deptFilter) : students;
+  const yearFilter = document.getElementById('attendanceYearFilter').value;
+  const sectionFilter = document.getElementById('attendanceSectionFilter').value;
+  const roster = students.filter(s=>
+    isActive(s) &&
+    (!deptFilter || s.department===deptFilter) &&
+    (!yearFilter || s.year===yearFilter) &&
+    (!sectionFilter || s.section===sectionFilter)
+  );
 
   if(students.length===0){ empty.style.display='block'; saveBar.style.display='none'; return; }
-  if(roster.length===0){ empty.style.display='block'; document.querySelector('#attendanceEmpty').innerHTML = '<span class="stamp-icon">🧑‍🎓</span>No students in this department.'; saveBar.style.display='none'; return; }
+  if(roster.length===0){ empty.style.display='block'; document.querySelector('#attendanceEmpty').innerHTML = '<span class="stamp-icon">🧑‍🎓</span>No active students match these filters.'; saveBar.style.display='none'; return; }
   empty.style.display='none'; saveBar.style.display='flex';
 
   const periodLabel = (classHours[selectedPeriod] && classHours[selectedPeriod].label) || ('Period '+(selectedPeriod+1));
@@ -813,7 +881,7 @@ function renderAttendanceView(){
       ${s.photo ? `<img class="avatar" src="${s.photo}" alt="${s.name}">` : `<div class="avatar-fallback">${initials(s.name)}</div>`}
       <div class="student-info">
         <h3 style="margin:0 0 2px 0;font-size:14.5px;">${escapeHtml(s.name)}</h3>
-        <span class="reg-badge mono">${escapeHtml(s.regNo)}</span>${s.department?`<span class="dept-badge">${escapeHtml(s.department)}</span>`:''}
+        <span class="reg-badge mono">${escapeHtml(s.regNo)}</span>${s.department?`<span class="dept-badge">${escapeHtml(s.department)}</span>`:''}${s.year?`<span class="year-badge">${escapeHtml(s.year)}${s.section?' '+escapeHtml(s.section):''}</span>`:''}
       </div>
       <div class="toggle-group" data-student="${s.id}">
         <button class="toggle-btn present ${draftMarks[s.id]==='P'?'on':''}" data-mark="P">PRESENT</button>
@@ -877,6 +945,8 @@ document.getElementById('prevPeriodBtn').addEventListener('click', ()=>{ reportO
 document.getElementById('nextPeriodBtn').addEventListener('click', ()=>{ if(reportOffset>0){ reportOffset -= 1; renderReportsView(); } });
 document.getElementById('currentPeriodBtn').addEventListener('click', ()=>{ reportOffset = 0; renderReportsView(); });
 document.getElementById('reportDeptFilter').addEventListener('change', renderReportsView);
+document.getElementById('reportYearFilter').addEventListener('change', renderReportsView);
+document.getElementById('reportSectionFilter').addEventListener('change', renderReportsView);
 document.getElementById('thresholdInput').addEventListener('input', ()=>{
   if(document.getElementById('view-reports').classList.contains('active')) renderReportsView();
 });
@@ -890,7 +960,14 @@ function renderReportsView(){
   document.getElementById('currentPeriodBtn').style.display = reportOffset===0 ? 'none' : 'inline-flex';
 
   const deptFilter = document.getElementById('reportDeptFilter').value;
-  const roster = deptFilter ? students.filter(s=>s.department===deptFilter) : students;
+  const yearFilter = document.getElementById('reportYearFilter').value;
+  const sectionFilter = document.getElementById('reportSectionFilter').value;
+  const roster = students.filter(s=>
+    isActive(s) &&
+    (!deptFilter || s.department===deptFilter) &&
+    (!yearFilter || s.year===yearFilter) &&
+    (!sectionFilter || s.section===sectionFilter)
+  );
 
   const rosterWrap = document.getElementById('rosterReport');
   const table = document.getElementById('reportTable');
@@ -920,7 +997,7 @@ function renderReportsView(){
       ${s.photo ? `<img class="avatar" src="${s.photo}" alt="${s.name}">` : `<div class="avatar-fallback">${initials(s.name)}</div>`}
       <div class="student-info">
         <h3 style="margin:0 0 2px 0;font-size:14.5px;">${escapeHtml(s.name)}</h3>
-        <span class="reg-badge mono">${escapeHtml(s.regNo)}</span>${s.department?`<span class="dept-badge">${escapeHtml(s.department)}</span>`:''}
+        <span class="reg-badge mono">${escapeHtml(s.regNo)}</span>${s.department?`<span class="dept-badge">${escapeHtml(s.department)}</span>`:''}${s.year?`<span class="year-badge">${escapeHtml(s.year)}${s.section?' '+escapeHtml(s.section):''}</span>`:''}
       </div>
       <span class="pct-pill ${pct===null?'':pctClass(pct)}">${pct===null?'—':pct+'%'}</span>
       <button class="btn btn-outline btn-sm" data-show="${s.id}">Show Attendance</button>
@@ -1070,7 +1147,14 @@ document.getElementById('closeShowModal').addEventListener('click', ()=>document
 document.getElementById('shareReportBtn').addEventListener('click', ()=>{
   const dates = last15Dates(reportOffset);
   const deptFilter = document.getElementById('reportDeptFilter').value;
-  const roster = deptFilter ? students.filter(s=>s.department===deptFilter) : students;
+  const yearFilter = document.getElementById('reportYearFilter').value;
+  const sectionFilter = document.getElementById('reportSectionFilter').value;
+  const roster = students.filter(s=>
+    isActive(s) &&
+    (!deptFilter || s.department===deptFilter) &&
+    (!yearFilter || s.year===yearFilter) &&
+    (!sectionFilter || s.section===sectionFilter)
+  );
   const snapshot = {
     v:2, generated: todayStr(), dates,
     holidays: dates.map(d=>!!holidays[d]),
@@ -1112,6 +1196,12 @@ function renderSettingsView(){
                       <input type="text" data-hour-time="${idx}" value="${escapeHtml(ch.time)}" placeholder="e.g. 9:00–9:50 AM">`;
     hoursList.appendChild(row);
   });
+
+  const restoreSelect = document.getElementById('restoreBatchSelect');
+  const currentBatch = restoreSelect.value;
+  const batches = [...new Set(students.filter(s=>!isActive(s) && s.batch).map(s=>s.batch))].sort().reverse();
+  restoreSelect.innerHTML = '<option value="">— Select a batch —</option>' + batches.map(b=>`<option value="${escapeHtml(b)}">${escapeHtml(b)} (${students.filter(s=>s.batch===b && !isActive(s)).length} students)</option>`).join('');
+  if(batches.includes(currentBatch)) restoreSelect.value = currentBatch;
 }
 document.getElementById('addDeptBtn').addEventListener('click', ()=>{
   const input = document.getElementById('newDeptInput');
@@ -1133,6 +1223,43 @@ document.getElementById('saveHoursBtn').addEventListener('click', ()=>{
     time: document.querySelector(`[data-hour-time="${idx}"]`).value.trim()
   }));
   if(saveClassHours(next)){ classHours = next; renderPeriodTabs(); showStamp('CLASS HOURS SAVED ✓'); }
+});
+
+const NEXT_YEAR = {'1st Year':'2nd Year','2nd Year':'3rd Year','3rd Year':'Final Year'};
+document.getElementById('promoteYearBtn').addEventListener('click', ()=>{
+  const fromYear = document.getElementById('promoteYearSelect').value;
+
+  if(fromYear === 'Final Year'){
+    const group = students.filter(s=>isActive(s) && s.year==='Final Year');
+    if(group.length===0){ alert('No active Final Year students to pass out.'); return; }
+    const defaultBatch = String(new Date().getFullYear());
+    const batch = prompt(`Passing out ${group.length} Final Year student(s). Enter a batch name/year to file them under (e.g. "${defaultBatch}"):`, defaultBatch);
+    if(!batch) return;
+    if(!confirm(`Mark ${group.length} student(s) as Passed Out under batch "${batch}"? Their attendance history is kept, but they'll move to Alumni and stop appearing in Mark Attendance.`)) return;
+    const groupIds = new Set(group.map(s=>s.id));
+    const next = students.map(s => groupIds.has(s.id) ? {...s, status:'passed_out', batch} : s);
+    if(saveStudents(next)){ students = next; renderStudents(); renderSettingsView(); showStamp('PASSED OUT ✓'); }
+    return;
+  }
+
+  const toYear = NEXT_YEAR[fromYear];
+  const group = students.filter(s=>isActive(s) && s.year===fromYear);
+  if(group.length===0){ alert(`No active students currently in ${fromYear}.`); return; }
+  if(!confirm(`Promote ${group.length} student(s) from ${fromYear} to ${toYear}? This can't be undone automatically — you'd need to edit them back individually.`)) return;
+  const groupIds = new Set(group.map(s=>s.id));
+  const next = students.map(s => groupIds.has(s.id) ? {...s, year:toYear} : s);
+  if(saveStudents(next)){ students = next; renderStudents(); showStamp('PROMOTED ✓'); }
+});
+
+document.getElementById('restoreBatchBtn').addEventListener('click', ()=>{
+  const batch = document.getElementById('restoreBatchSelect').value;
+  if(!batch){ alert('Select a batch to restore first.'); return; }
+  const group = students.filter(s=>!isActive(s) && s.batch===batch);
+  if(group.length===0){ alert('No students found in that batch.'); return; }
+  if(!confirm(`Restore ${group.length} student(s) from batch "${batch}" back to active Final Year students?`)) return;
+  const groupIds = new Set(group.map(s=>s.id));
+  const next = students.map(s => groupIds.has(s.id) ? {...s, status:'active', batch:''} : s);
+  if(saveStudents(next)){ students = next; renderStudents(); renderSettingsView(); showStamp('RESTORED ✓'); }
 });
 document.getElementById('changePinBtn').addEventListener('click', ()=>{
   const cur = document.getElementById('currentPinInput').value.trim();
