@@ -224,6 +224,7 @@
       <div><h1>Roll Call</h1><span>Class Attendance Register</span></div>
     </div>
     <div class="today-chip" id="todayChip"></div>
+    <div class="today-chip" id="cloudStatus">☁ Connecting…</div>
   </div>
   <nav class="tabs" id="tabNav">
     <button class="tab-btn active" data-view="students">Students</button>
@@ -416,12 +417,40 @@
 
 </div><!-- /appRoot -->
 
-<script>
+<script type="module">
+/* ============ Firebase (shared cloud backend) ============ */
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDyZdTCYSJzNdSfEdMKU8ak7p0wya2HrdI",
+  authDomain: "roll-call-attendance.firebaseapp.com",
+  projectId: "roll-call-attendance",
+  storageBucket: "roll-call-attendance.firebasestorage.app",
+  messagingSenderId: "878083735260",
+  appId: "1:878083735260:web:5601a1e7aeab1e286c3e19",
+  measurementId: "G-GEEVV2HT00"
+};
+const fbApp = initializeApp(firebaseConfig);
+const db = getFirestore(fbApp);
+const cloudDocRef = doc(db, "rollcall", "data");
+let cloudReady = false;      // true once we've successfully connected at least once
+let firstSnapshotHandled = false;
+
+function setCloudStatus(text){ const el=document.getElementById('cloudStatus'); if(el) el.textContent = text; }
+
 /* ============ Storage keys ============ */
 const LS_STUDENTS='rollcall_students', LS_ATTENDANCE='rollcall_attendance', LS_HOLIDAYS='rollcall_holidays',
       LS_NOTIFIED='rollcall_notified', LS_LAST_DATE='rollcall_last_date', LS_LAST_PERIOD='rollcall_last_period',
       LS_DEPARTMENTS='rollcall_departments', LS_CLASS_HOURS='rollcall_class_hours', LS_PIN='rollcall_pin',
       SS_AUTHED='rollcall_authed';
+
+/* Which local-storage keys are mirrored to the shared Firestore document, and under what field name.
+   The staff PIN and this-device's last-used date/period stay local-only on purpose. */
+const CLOUD_FIELD_MAP = {
+  [LS_STUDENTS]:'students', [LS_ATTENDANCE]:'attendance', [LS_HOLIDAYS]:'holidays',
+  [LS_DEPARTMENTS]:'departments', [LS_CLASS_HOURS]:'classHours'
+};
 
 /* ---- Safe storage wrapper: every write is verified; failures alert instead of silently vanishing ---- */
 function safeSet(key, value){
@@ -438,7 +467,17 @@ function safeSet(key, value){
   }
 }
 function loadJSON(key, fallback){ try{ const v = JSON.parse(localStorage.getItem(key)); return v===null||v===undefined ? fallback : v; }catch(e){ return fallback; } }
-function saveJSON(key, obj){ return safeSet(key, JSON.stringify(obj)); }
+function saveJSON(key, obj){
+  const ok = safeSet(key, JSON.stringify(obj));
+  const field = CLOUD_FIELD_MAP[key];
+  if(field && cloudReady){
+    setDoc(cloudDocRef, {[field]: obj}, {merge:true}).catch(err=>{
+      console.error('cloud sync failed', err);
+      showStamp('⚠ NOT SYNCED (offline?)');
+    });
+  }
+  return ok;
+}
 
 function loadStudents(){ return loadJSON(LS_STUDENTS, []); }
 function saveStudents(list){ return saveJSON(LS_STUDENTS, list); }
@@ -1179,6 +1218,13 @@ function loadSharedFromUrl(){
 }
 
 /* ============ Boot ============ */
+function refreshCurrentView(){
+  if(document.getElementById('view-students').classList.contains('active')) renderStudents();
+  if(document.getElementById('view-attendance').classList.contains('active')) renderAttendanceView();
+  if(document.getElementById('view-reports').classList.contains('active')) renderReportsView();
+  if(document.getElementById('view-settings').classList.contains('active')) renderSettingsView();
+}
+
 function bootApp(){
   document.getElementById('todayChip').textContent = fmtDate(todayStr());
   refreshDeptSelects();
@@ -1190,10 +1236,55 @@ function bootApp(){
 }
 
 if(!loadSharedFromUrl()){
-  initAuthGate();
-  if(appRoot.style.display==='block') bootApp();
+  // Hold the login screen in a "connecting" state until we hear from Firestore at least once
+  document.getElementById('loginTitle').textContent = 'Loading…';
+  document.getElementById('loginSubtitle').textContent = 'Connecting to the shared class database…';
+  document.getElementById('pinInput').style.display='none';
+  document.getElementById('pinSubmitBtn').style.display='none';
+  loginScreen.style.display='flex';
+
+  function onFirstCloudData(){
+    document.getElementById('pinInput').style.display='';
+    document.getElementById('pinSubmitBtn').style.display='';
+    initAuthGate();
+    if(appRoot.style.display==='block') bootApp();
+  }
+
+  onSnapshot(cloudDocRef, snap=>{
+    cloudReady = true;
+    setCloudStatus('☁ Synced');
+    if(snap.exists()){
+      const data = snap.data();
+      if(data.students) students = data.students;
+      if(data.attendance) attendance = data.attendance;
+      if(data.holidays) holidays = data.holidays;
+      if(data.departments) departments = data.departments;
+      if(data.classHours) classHours = data.classHours;
+      // mirror into this device's local cache so it still works if offline later
+      safeSet(LS_STUDENTS, JSON.stringify(students));
+      safeSet(LS_ATTENDANCE, JSON.stringify(attendance));
+      safeSet(LS_HOLIDAYS, JSON.stringify(holidays));
+      safeSet(LS_DEPARTMENTS, JSON.stringify(departments));
+      safeSet(LS_CLASS_HOURS, JSON.stringify(classHours));
+    } else {
+      // First ever run for this project: seed the shared doc from whatever's on this device already
+      setDoc(cloudDocRef, { students, attendance, holidays, departments, classHours });
+    }
+    if(!firstSnapshotHandled){ firstSnapshotHandled = true; onFirstCloudData(); }
+    else { refreshCurrentView(); }
+  }, err=>{
+    console.error('Firestore connection failed', err);
+    cloudReady = false;
+    setCloudStatus('⚠ Offline (local only)');
+    if(!firstSnapshotHandled){
+      firstSnapshotHandled = true;
+      alert('Could not connect to the shared database, so this device will only use its own local data for now. Check your internet connection and reload when possible.');
+      onFirstCloudData();
+    }
+  });
 } else {
   document.getElementById('todayChip').textContent = '';
+  document.getElementById('cloudStatus').style.display='none';
 }
 </script>
 </body>
