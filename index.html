@@ -527,12 +527,12 @@ function loadStudents(){ return loadJSON(LS_STUDENTS, []); }
 function diffAndSyncStudents(prevList, nextList){
   safeSet(LS_STUDENTS, JSON.stringify(nextList));
   if(!cloudReady) return;
-  const prevIds = new Set(prevList.map(s=>s.id));
   const nextIds = new Set(nextList.map(s=>s.id));
   nextList.forEach(s=>{
     const prev = prevList.find(p=>p.id===s.id);
     if(!prev || JSON.stringify(prev) !== JSON.stringify(s)){
-      setDoc(doc(studentsColRef, s.id), s).catch(err=>{ console.error(err); showStamp('⚠ NOT SYNCED (offline?)'); });
+      const { id, ...dataOnly } = s; // don't store 'id' inside the doc — it's already the document's own ID
+      setDoc(doc(studentsColRef, s.id), dataOnly).catch(err=>{ console.error(err); showStamp('⚠ NOT SYNCED (offline?)'); });
     }
   });
   prevList.forEach(p=>{
