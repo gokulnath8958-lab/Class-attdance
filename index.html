@@ -411,9 +411,6 @@
   <div class="modal">
     <div class="modal-head"><h3 id="studentModalTitle">Add Student</h3><button class="icon-btn" id="closeStudentModal">✕</button></div>
     <div class="modal-body">
-      <div class="field"><label>Photo</label>
-        <div class="photo-row"><img class="photo-preview" id="photoPreview" alt="preview"><input type="file" id="photoInput" accept="image/*"></div>
-      </div>
       <div class="field"><label>Full Name</label><input type="text" id="nameInput" placeholder="e.g. Ananya Sharma"></div>
       <div class="field"><label>Register Number</label><input type="text" id="regInput" class="mono" placeholder="e.g. 21CS045"></div>
       <div class="field"><label>Department</label><select id="deptInput"><option value="">— Select —</option></select></div>
@@ -457,7 +454,7 @@
 <script type="module">
 /* ============ Firebase (shared cloud backend) ============ */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, setDoc, deleteDoc, getDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDyZdTCYSJzNdSfEdMKU8ak7p0wya2HrdI",
@@ -470,9 +467,18 @@ const firebaseConfig = {
 };
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
-const cloudDocRef = doc(db, "rollcall", "data");
-let cloudReady = false;      // true once we've successfully connected at least once
-let firstSnapshotHandled = false;
+
+/* Storage is split so no single document can ever hit Firestore's 1MB-per-document ceiling:
+   - rollcall_meta/config  → departments, classHours, holidays (tiny, always small)
+   - rollcall_students/{id} → ONE small document per student (not one giant array)
+   - rollcall_attendance/{date}_p{period} → ONE small document per date+period (not one growing blob) */
+const metaRef = doc(db, "rollcall_meta", "config");
+const studentsColRef = collection(db, "rollcall_students");
+function attendanceDocRef(date, period){ return doc(db, "rollcall_attendance", `${date}_p${period}`); }
+
+let cloudReady = false;
+let metaSnapshotHandled = false;
+let studentsSnapshotHandled = false;
 
 function setCloudStatus(text){ const el=document.getElementById('cloudStatus'); if(el) el.textContent = text; }
 
@@ -482,11 +488,10 @@ const LS_STUDENTS='rollcall_students', LS_ATTENDANCE='rollcall_attendance', LS_H
       LS_DEPARTMENTS='rollcall_departments', LS_CLASS_HOURS='rollcall_class_hours', LS_PIN='rollcall_pin',
       SS_AUTHED='rollcall_authed';
 
-/* Which local-storage keys are mirrored to the shared Firestore document, and under what field name.
-   The staff PIN and this-device's last-used date/period stay local-only on purpose. */
+/* Only these small settings sync through the shared meta document.
+   Students and attendance are handled separately (see below) so they never bloat one document. */
 const CLOUD_FIELD_MAP = {
-  [LS_STUDENTS]:'students', [LS_ATTENDANCE]:'attendance', [LS_HOLIDAYS]:'holidays',
-  [LS_DEPARTMENTS]:'departments', [LS_CLASS_HOURS]:'classHours'
+  [LS_DEPARTMENTS]:'departments', [LS_CLASS_HOURS]:'classHours', [LS_HOLIDAYS]:'holidays'
 };
 
 /* ---- Safe storage wrapper: every write is verified; failures alert instead of silently vanishing ---- */
@@ -508,7 +513,7 @@ function saveJSON(key, obj){
   const ok = safeSet(key, JSON.stringify(obj));
   const field = CLOUD_FIELD_MAP[key];
   if(field && cloudReady){
-    setDoc(cloudDocRef, {[field]: obj}, {merge:true}).catch(err=>{
+    setDoc(metaRef, {[field]: obj}, {merge:true}).catch(err=>{
       console.error('cloud sync failed', err);
       showStamp('⚠ NOT SYNCED (offline?)');
     });
@@ -517,9 +522,29 @@ function saveJSON(key, obj){
 }
 
 function loadStudents(){ return loadJSON(LS_STUDENTS, []); }
-function saveStudents(list){ return saveJSON(LS_STUDENTS, list); }
-function loadAttendance(){ return loadJSON(LS_ATTENDANCE, {}); }
-function saveAttendanceData(obj){ return saveJSON(LS_ATTENDANCE, obj); }
+/* Students now sync as ONE small Firestore document per student, not one giant array.
+   diffAndSyncStudents compares old vs new local arrays and only writes/deletes the students that actually changed. */
+function diffAndSyncStudents(prevList, nextList){
+  safeSet(LS_STUDENTS, JSON.stringify(nextList));
+  if(!cloudReady) return;
+  const prevIds = new Set(prevList.map(s=>s.id));
+  const nextIds = new Set(nextList.map(s=>s.id));
+  nextList.forEach(s=>{
+    const prev = prevList.find(p=>p.id===s.id);
+    if(!prev || JSON.stringify(prev) !== JSON.stringify(s)){
+      setDoc(doc(studentsColRef, s.id), s).catch(err=>{ console.error(err); showStamp('⚠ NOT SYNCED (offline?)'); });
+    }
+  });
+  prevList.forEach(p=>{
+    if(!nextIds.has(p.id)){
+      deleteDoc(doc(studentsColRef, p.id)).catch(err=>console.error(err));
+    }
+  });
+}
+function saveStudents(list){
+  diffAndSyncStudents(students, list);
+  return true;
+}
 function loadHolidays(){ return loadJSON(LS_HOLIDAYS, {}); }
 function saveHolidays(obj){ return saveJSON(LS_HOLIDAYS, obj); }
 function getNotified(){ return loadJSON(LS_NOTIFIED, {}); }
@@ -532,12 +557,37 @@ function loadClassHours(){
 function saveClassHours(list){ return saveJSON(LS_CLASS_HOURS, list); }
 
 let students = loadStudents();
-let attendance = loadAttendance();       // { date: { periodIdx: { studentId: 'P'|'A' } } }
+let attendance = {};   // in-memory cache, populated on demand: { date: { periodIdx: { studentId: 'P'|'A' } } }
+const attendanceFetched = new Set(); // 'date_period' keys already fetched this session (avoid refetch spam)
+
+async function fetchAttendanceDoc(date, period, forceRefresh){
+  const key = date+'_'+period;
+  if(!forceRefresh && attendanceFetched.has(key)) return;
+  try{
+    const snap = await getDoc(attendanceDocRef(date, period));
+    if(!attendance[date]) attendance[date] = {};
+    attendance[date][period] = snap.exists() ? (snap.data().marks || {}) : {};
+    attendanceFetched.add(key);
+  }catch(e){ console.error('attendance fetch failed', e); }
+}
+async function saveAttendanceDoc(date, period, marks){
+  if(!attendance[date]) attendance[date] = {};
+  attendance[date][period] = marks; // optimistic local update
+  attendanceFetched.add(date+'_'+period);
+  if(!cloudReady){ showStamp('SAVED ✓ (offline — will not sync)'); return true; }
+  try{
+    await setDoc(attendanceDocRef(date, period), { marks, savedAt: new Date().toISOString() });
+    return true;
+  }catch(e){
+    console.error('attendance save failed', e);
+    showStamp('⚠ NOT SYNCED (offline?)');
+    return false;
+  }
+}
 let holidays = loadHolidays();           // { date: true }
 let departments = loadDepartments();
 let classHours = loadClassHours();       // [{label,time}, ... up to 8]
 let editingStudentId = null;
-let pendingPhotoData = null;
 
 /* ============ Staff PIN gate ============ */
 const loginScreen = document.getElementById('loginScreen');
@@ -705,19 +755,17 @@ document.getElementById('studentGrid').addEventListener('click', e=>{
   if(delId){
     const s = students.find(x=>x.id===delId.dataset.del);
     if(confirm(`Remove ${s.name} from the roster? Their past attendance records will be kept but hidden.`)){
-      students = students.filter(x=>x.id!==delId.dataset.del);
-      if(saveStudents(students)) renderStudents();
+      const nextList = students.filter(x=>x.id!==delId.dataset.del);
+      if(saveStudents(nextList)){ students = nextList; renderStudents(); }
     }
   }
 });
 
 function openStudentModal(id){
   editingStudentId = id || null;
-  pendingPhotoData = null;
   refreshDeptSelects();
   const overlay = document.getElementById('studentModalOverlay');
   document.getElementById('studentModalTitle').textContent = id ? 'Edit Student' : 'Add Student';
-  const preview = document.getElementById('photoPreview');
   if(id){
     const s = students.find(x=>x.id===id);
     document.getElementById('nameInput').value = s.name;
@@ -726,8 +774,6 @@ function openStudentModal(id){
     document.getElementById('deptInput').value = s.department || '';
     document.getElementById('yearInput').value = s.year || '1st Year';
     document.getElementById('sectionInput').value = s.section || 'A';
-    pendingPhotoData = s.photo || null;
-    if(s.photo){ preview.src=s.photo; preview.textContent=''; } else { preview.removeAttribute('src'); preview.textContent='No photo'; }
   } else {
     document.getElementById('nameInput').value='';
     document.getElementById('regInput').value='';
@@ -735,38 +781,13 @@ function openStudentModal(id){
     document.getElementById('deptInput').value='';
     document.getElementById('yearInput').value='1st Year';
     document.getElementById('sectionInput').value='A';
-    preview.removeAttribute('src'); preview.textContent='No photo';
   }
-  document.getElementById('photoInput').value='';
   overlay.classList.add('active');
 }
 document.getElementById('openAddStudent').addEventListener('click', ()=>openStudentModal(null));
 document.getElementById('closeStudentModal').addEventListener('click', closeStudentModal);
 document.getElementById('cancelStudentBtn').addEventListener('click', closeStudentModal);
 function closeStudentModal(){ document.getElementById('studentModalOverlay').classList.remove('active'); }
-
-document.getElementById('photoInput').addEventListener('change', e=>{
-  const file = e.target.files[0];
-  if(!file) return;
-  const reader = new FileReader();
-  reader.onload = ev=>{
-    const img = new Image();
-    img.onload = ()=>{
-      const size=110; // kept small to reduce local-storage quota pressure (a common cause of "later saves silently failing")
-      const canvas = document.createElement('canvas');
-      canvas.width=size; canvas.height=size;
-      const ctx = canvas.getContext('2d');
-      const scale = Math.max(size/img.width, size/img.height);
-      const w=img.width*scale, h=img.height*scale;
-      ctx.drawImage(img, (size-w)/2, (size-h)/2, w, h);
-      pendingPhotoData = canvas.toDataURL('image/jpeg',0.65);
-      const preview = document.getElementById('photoPreview');
-      preview.src = pendingPhotoData; preview.textContent='';
-    };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
-});
 
 document.getElementById('saveStudentBtn').addEventListener('click', ()=>{
   const name = document.getElementById('nameInput').value.trim();
@@ -780,9 +801,9 @@ document.getElementById('saveStudentBtn').addEventListener('click', ()=>{
   const prevStudents = students; // keep a copy in case save fails, so UI/memory doesn't drift from storage
   let nextStudents;
   if(editingStudentId){
-    nextStudents = students.map(s => s.id===editingStudentId ? {...s, name, regNo, photo:pendingPhotoData, parentPhone, department, year, section} : s);
+    nextStudents = students.map(s => s.id===editingStudentId ? {...s, name, regNo, parentPhone, department, year, section} : s);
   } else {
-    nextStudents = [...students, { id: uid(), name, regNo, photo: pendingPhotoData, parentPhone, department, year, section, status:'active', batch:'' }];
+    nextStudents = [...students, { id: uid(), name, regNo, parentPhone, department, year, section, status:'active', batch:'' }];
   }
   if(saveStudents(nextStudents)){
     students = nextStudents;
@@ -828,8 +849,9 @@ document.getElementById('attendanceYearFilter').addEventListener('change', rende
 document.getElementById('attendanceSectionFilter').addEventListener('change', renderAttendanceView);
 
 let draftMarks = {};
+let attendanceRenderToken = 0;
 
-function renderAttendanceView(){
+async function renderAttendanceView(){
   const list = document.getElementById('attendanceList');
   const empty = document.getElementById('attendanceEmpty');
   const saveBar = document.getElementById('attendanceSaveBar');
@@ -862,6 +884,11 @@ function renderAttendanceView(){
   if(students.length===0){ empty.style.display='block'; saveBar.style.display='none'; return; }
   if(roster.length===0){ empty.style.display='block'; document.querySelector('#attendanceEmpty').innerHTML = '<span class="stamp-icon">🧑‍🎓</span>No active students match these filters.'; saveBar.style.display='none'; return; }
   empty.style.display='none'; saveBar.style.display='flex';
+  list.innerHTML = '<p style="color:#6C8499;font-size:13px;padding:12px 0;">Loading this period\'s saved attendance…</p>';
+
+  const thisCallToken = ++attendanceRenderToken;
+  await fetchAttendanceDoc(date, selectedPeriod, true);
+  if(thisCallToken !== attendanceRenderToken) return; // a newer render started while we were fetching — drop this stale one
 
   const periodLabel = (classHours[selectedPeriod] && classHours[selectedPeriod].label) || ('Period '+(selectedPeriod+1));
   const existing = (attendance[date] && attendance[date][selectedPeriod]) || {};
@@ -871,6 +898,7 @@ function renderAttendanceView(){
     ? `Editing saved entries for ${periodLabel} on ${fmtDate(date)}${isToday?' (today)':''} — change and re-save to update them.`
     : `New entry for ${periodLabel} on ${fmtDate(date)}${isToday?' (today)':''}.`;
 
+  list.innerHTML='';
   draftMarks = {};
   roster.forEach(s=>{ draftMarks[s.id] = existing[s.id] || 'P'; });
 
@@ -895,17 +923,9 @@ function renderAttendanceView(){
 document.getElementById('leaveToggleBtn').addEventListener('click', ()=>{
   const date = dateInput.value || todayStr();
   const nextHolidays = {...holidays};
-  let nextAttendance = attendance;
-  if(nextHolidays[date]){
-    delete nextHolidays[date];
-  } else {
-    nextHolidays[date] = true;
-    nextAttendance = {...attendance};
-    delete nextAttendance[date];
-  }
+  if(nextHolidays[date]) delete nextHolidays[date]; else nextHolidays[date] = true;
   if(saveHolidays(nextHolidays)){
     holidays = nextHolidays;
-    if(nextAttendance !== attendance){ if(saveAttendanceData(nextAttendance)) attendance = nextAttendance; }
     renderAttendanceView();
     showStamp(holidays[date] ? 'MARKED LEAVE ✓' : 'LEAVE REMOVED');
   }
@@ -929,18 +949,16 @@ function updateAttendanceSummary(){
   document.getElementById('attendanceSummary').textContent = `${present} present · ${absent} absent · ${vals.length} total`;
 }
 
-document.getElementById('saveAttendanceBtn').addEventListener('click', ()=>{
+document.getElementById('saveAttendanceBtn').addEventListener('click', async ()=>{
   const date = dateInput.value || todayStr();
-  const nextAttendance = {...attendance, [date]: {...(attendance[date]||{}), [selectedPeriod]: {...draftMarks}}};
-  if(saveAttendanceData(nextAttendance)){
-    attendance = nextAttendance;
-    showStamp('SAVED ✓');
-    renderAttendanceView();
-  }
+  const ok = await saveAttendanceDoc(date, selectedPeriod, {...draftMarks});
+  if(ok) showStamp('SAVED ✓');
+  renderAttendanceView();
 });
 
 /* ============ Reports ============ */
 let reportOffset = 0;
+let reportsRenderToken = 0;
 document.getElementById('prevPeriodBtn').addEventListener('click', ()=>{ reportOffset += 1; renderReportsView(); });
 document.getElementById('nextPeriodBtn').addEventListener('click', ()=>{ if(reportOffset>0){ reportOffset -= 1; renderReportsView(); } });
 document.getElementById('currentPeriodBtn').addEventListener('click', ()=>{ reportOffset = 0; renderReportsView(); });
@@ -951,7 +969,7 @@ document.getElementById('thresholdInput').addEventListener('input', ()=>{
   if(document.getElementById('view-reports').classList.contains('active')) renderReportsView();
 });
 
-function renderReportsView(){
+async function renderReportsView(){
   const dates = last15Dates(reportOffset);
   document.getElementById('reportRangeLabel').textContent = reportOffset===0
     ? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} (current 15 days, all periods combined)`
@@ -972,9 +990,19 @@ function renderReportsView(){
   const rosterWrap = document.getElementById('rosterReport');
   const table = document.getElementById('reportTable');
   const empty = document.getElementById('reportsEmpty');
-  rosterWrap.innerHTML=''; table.innerHTML='';
+  rosterWrap.innerHTML=''; table.innerHTML = '<caption style="padding:16px;color:#6C8499;font-size:13px;text-align:left;">Loading this range\'s attendance…</caption>';
 
-  const anyRecords = Object.keys(attendance).length>0;
+  const thisCallToken = ++reportsRenderToken;
+  const fetches = [];
+  dates.forEach(d=>{
+    if(holidays[d]) return;
+    classHours.forEach((_,p)=> fetches.push(fetchAttendanceDoc(d, p)));
+  });
+  await Promise.all(fetches);
+  if(thisCallToken !== reportsRenderToken) return; // a newer render started while fetching — drop this stale one
+  table.innerHTML='';
+
+  const anyRecords = dates.some(d => attendance[d] && Object.values(attendance[d]).some(periodMarks => Object.keys(periodMarks||{}).length>0));
   if(roster.length===0 || !anyRecords){
     empty.style.display='block';
     document.querySelector('#view-reports .table-wrap').style.display='none';
@@ -1272,7 +1300,10 @@ document.getElementById('changePinBtn').addEventListener('click', ()=>{
   }
 });
 document.getElementById('exportBtn').addEventListener('click', ()=>{
-  const backup = { students, attendance, holidays, departments, classHours, exportedAt: new Date().toISOString() };
+  // Attendance is intentionally NOT included here — it's already safely split across many small
+  // Firestore documents (one per date+period), so there's no single blob of it to export.
+  // This backup covers the roster and settings, which is what local storage could otherwise lose.
+  const backup = { students, holidays, departments, classHours, exportedAt: new Date().toISOString(), note: 'Attendance records live in Firestore (rollcall_attendance collection) and are not included in this file.' };
   const blob = new Blob([JSON.stringify(backup,null,2)], {type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1288,7 +1319,6 @@ document.getElementById('importInput').addEventListener('change', e=>{
       const data = JSON.parse(ev.target.result);
       if(!confirm('This will replace all current data on this device with the backup file. Continue?')) return;
       if(data.students) saveStudents(data.students) && (students = data.students);
-      if(data.attendance) saveAttendanceData(data.attendance) && (attendance = data.attendance);
       if(data.holidays) saveHolidays(data.holidays) && (holidays = data.holidays);
       if(data.departments) saveDepartments(data.departments) && (departments = data.departments);
       if(data.classHours) saveClassHours(data.classHours) && (classHours = data.classHours);
@@ -1370,44 +1400,56 @@ if(!loadSharedFromUrl()){
   document.getElementById('pinSubmitBtn').style.display='none';
   loginScreen.style.display='flex';
 
-  function onFirstCloudData(){
+  let bootStarted = false;
+  function maybeStartApp(){
+    // wait for BOTH the meta doc (departments/hours/holidays) and the students collection
+    // before showing the app, so the first screen isn't missing data
+    if(bootStarted) return;
+    if(!metaSnapshotHandled || !studentsSnapshotHandled) return;
+    bootStarted = true;
     document.getElementById('pinInput').style.display='';
     document.getElementById('pinSubmitBtn').style.display='';
     initAuthGate();
     if(appRoot.style.display==='block') bootApp();
   }
 
-  onSnapshot(cloudDocRef, snap=>{
+  onSnapshot(metaRef, snap=>{
     cloudReady = true;
     setCloudStatus('☁ Synced');
     if(snap.exists()){
       const data = snap.data();
-      if(data.students) students = data.students;
-      if(data.attendance) attendance = data.attendance;
-      if(data.holidays) holidays = data.holidays;
       if(data.departments) departments = data.departments;
       if(data.classHours) classHours = data.classHours;
-      // mirror into this device's local cache so it still works if offline later
-      safeSet(LS_STUDENTS, JSON.stringify(students));
-      safeSet(LS_ATTENDANCE, JSON.stringify(attendance));
+      if(data.holidays) holidays = data.holidays;
       safeSet(LS_HOLIDAYS, JSON.stringify(holidays));
       safeSet(LS_DEPARTMENTS, JSON.stringify(departments));
       safeSet(LS_CLASS_HOURS, JSON.stringify(classHours));
     } else {
-      // First ever run for this project: seed the shared doc from whatever's on this device already
-      setDoc(cloudDocRef, { students, attendance, holidays, departments, classHours });
+      setDoc(metaRef, { departments, classHours, holidays }); // first ever run: seed from this device
     }
-    if(!firstSnapshotHandled){ firstSnapshotHandled = true; onFirstCloudData(); }
-    else { refreshCurrentView(); }
+    metaSnapshotHandled = true;
+    if(bootStarted) refreshCurrentView();
+    maybeStartApp();
   }, err=>{
-    console.error('Firestore connection failed', err);
+    console.error('Firestore meta connection failed', err);
     cloudReady = false;
     setCloudStatus('⚠ Offline (local only)');
-    if(!firstSnapshotHandled){
-      firstSnapshotHandled = true;
-      alert('Could not connect to the shared database, so this device will only use its own local data for now. Check your internet connection and reload when possible.');
-      onFirstCloudData();
-    }
+    metaSnapshotHandled = true;
+    maybeStartApp();
+  });
+
+  onSnapshot(studentsColRef, snap=>{
+    const list = [];
+    snap.forEach(d=> list.push({ id: d.id, ...d.data() }));
+    students = list;
+    safeSet(LS_STUDENTS, JSON.stringify(students));
+    studentsSnapshotHandled = true;
+    if(bootStarted) refreshCurrentView();
+    maybeStartApp();
+  }, err=>{
+    console.error('Firestore students connection failed', err);
+    studentsSnapshotHandled = true;
+    maybeStartApp();
   });
 } else {
   document.getElementById('todayChip').textContent = '';
