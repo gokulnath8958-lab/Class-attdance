@@ -640,7 +640,7 @@ document.getElementById('staffChip').addEventListener('click', ()=>{
   if(currentStaff && confirm('Sign out of RVS Attendance Register?')) signOut(auth);
 });
 
-async function checkStaffAndProceed(user){
+async function checkStaffAndProceed(user, isRetry){
   showLoginState('checking');
   const email = (user.email||'').toLowerCase();
   try{
@@ -660,7 +660,12 @@ async function checkStaffAndProceed(user){
     }
   }catch(e){
     console.error('staff check failed', e);
-    alert('Could not verify staff access right now. Check your connection and try again.');
+    if(!isRetry){
+      // First failures right after page load are often a transient connection race — try once more before alarming the user
+      setTimeout(()=> checkStaffAndProceed(user, true), 1200);
+      return;
+    }
+    alert('Could not verify staff access.\n\nError details: ' + (e.code || e.message || e) + '\n\nIf this says "permission-denied", the Firestore security rule needs checking. If it says "unavailable" or "offline", check your internet connection and try again.');
     signOut(auth);
   }
 }
