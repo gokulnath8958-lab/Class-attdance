@@ -491,6 +491,16 @@ const googleProvider = new GoogleAuthProvider();
 const staffColRef = collection(db, "rollcall_staff");
 let currentStaff = null; // { email, name } once signed in and authorized
 let authResolved = false;
+let dataReady = false;   // true once meta + students have both loaded at least once
+let appBooted = false;
+function maybeBoot(){
+  if(appBooted) return;
+  if(!currentStaff) return; // not signed in / not yet approved
+  if(!dataReady){ showLoginState('connecting'); return; }
+  appBooted = true;
+  loginScreen.style.display='none'; appRoot.style.display='block';
+  bootApp();
+}
 
 let cloudReady = false;
 let metaSnapshotHandled = false;
@@ -1479,17 +1489,6 @@ function bootApp(){
 
 if(!loadSharedFromUrl()){
   if(!authResolved) showLoginState('connecting');
-
-  let dataReady = false;
-  let appBooted = false;
-  function maybeBoot(){
-    if(appBooted) return;
-    if(!currentStaff) return; // not signed in / not yet approved
-    if(!dataReady){ showLoginState('connecting'); return; }
-    appBooted = true;
-    loginScreen.style.display='none'; appRoot.style.display='block';
-    bootApp();
-  }
 
   onSnapshot(metaRef, snap=>{
     cloudReady = true;
