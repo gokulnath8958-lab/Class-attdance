@@ -207,11 +207,17 @@
   <div class="login-card">
     <div class="brand-mark" style="width:44px;height:44px;">R</div>
     <h2 id="loginTitle">Staff Login</h2>
-    <p id="loginSubtitle">Enter the staff PIN to open RVS College of Engineering and Technology.</p>
-    <input type="password" inputmode="numeric" class="pin-input mono" id="pinInput" maxlength="8" placeholder="••••">
-    <p class="login-error" id="loginError">Incorrect PIN. Try again.</p>
-    <button class="btn btn-primary btn-full" id="pinSubmitBtn">Unlock</button>
-    <p class="login-note">This PIN only locks the app screen on this device/browser — it is not secure server-side authentication, since this is a static page. Anyone with direct file/browser-storage access could bypass it. If you forget the PIN, it can only be reset by clearing this site's browser storage (which also erases attendance data), so please save it somewhere safe.</p>
+    <p id="loginSubtitle">Sign in with your staff Google account to open RVS College of Engineering and Technology.</p>
+    <button class="btn btn-primary btn-full" id="googleSignInBtn" style="display:none;justify-content:center;gap:10px;">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#fff" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84c-.21 1.13-.84 2.08-1.8 2.72v2.26h2.91c1.7-1.57 2.69-3.88 2.69-6.62z"/><path fill="#fff" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.91-2.26c-.81.54-1.85.86-3.05.86-2.34 0-4.33-1.58-5.04-3.71H.96v2.33C2.44 15.98 5.48 18 9 18z"/><path fill="#fff" d="M3.96 10.71c-.18-.54-.28-1.11-.28-1.71s.1-1.17.28-1.71V4.96H.96A8.996 8.996 0 000 9c0 1.45.35 2.83.96 4.04l3-2.33z"/><path fill="#fff" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.58C13.46.89 11.43 0 9 0 5.48 0 2.44 2.02.96 4.96l3 2.33C4.67 5.16 6.66 3.58 9 3.58z"/></svg>
+      Sign in with Google
+    </button>
+    <p class="login-error" id="loginError" style="display:none;"></p>
+    <div id="deniedBox" style="display:none;">
+      <p style="font-size:13.5px;color:var(--red);margin:10px 0;">Your Google account (<span id="deniedEmail" class="mono"></span>) isn't on the staff list yet. Ask an existing staff member to add you in Settings → Staff Accounts, then try again.</p>
+      <button class="btn btn-outline btn-full" id="deniedSignOutBtn">Sign Out / Try Different Account</button>
+    </div>
+    <p class="login-note" id="loginNote">Only Google accounts added to the staff list can access this app. The first person to sign in automatically becomes the first staff member.</p>
   </div>
 </div>
 
@@ -227,6 +233,7 @@
     </div>
     <div class="today-chip" id="todayChip"></div>
     <div class="today-chip" id="cloudStatus">☁ Connecting…</div>
+    <div class="today-chip" id="staffChip" style="cursor:pointer;" title="Tap to sign out"></div>
   </div>
   <nav class="tabs" id="tabNav">
     <button class="tab-btn active" data-view="students">Students</button>
@@ -374,11 +381,13 @@
         </div>
 
         <div class="settings-block">
-          <h3>Staff Access PIN</h3>
-          <p class="hint">Locks the app screen on this device until the PIN is entered.</p>
-          <div class="field"><label>Current PIN</label><input type="password" id="currentPinInput" class="mono"></div>
-          <div class="field"><label>New PIN</label><input type="password" id="newPinInput" class="mono" placeholder="4–8 digits"></div>
-          <button class="btn btn-outline btn-sm" id="changePinBtn">Update PIN</button>
+          <h3>Staff Accounts</h3>
+          <p class="hint">Only these Google accounts can sign in and use the app. Add a colleague's email before they try to sign in.</p>
+          <div class="date-picker-row">
+            <input type="email" id="newStaffInput" placeholder="colleague@gmail.com" style="flex:1;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;">
+            <button class="btn btn-outline btn-sm" id="addStaffBtn">＋ Add</button>
+          </div>
+          <div id="staffList" style="margin-top:12px;"></div>
         </div>
 
         <div class="settings-block">
@@ -454,7 +463,8 @@
 <script type="module">
 /* ============ Firebase (shared cloud backend) ============ */
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, setDoc, deleteDoc, getDoc, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getFirestore, doc, setDoc, deleteDoc, getDoc, getDocs, collection, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDyZdTCYSJzNdSfEdMKU8ak7p0wya2HrdI",
@@ -475,6 +485,12 @@ const db = getFirestore(fbApp);
 const metaRef = doc(db, "rollcall_meta", "config");
 const studentsColRef = collection(db, "rollcall_students");
 function attendanceDocRef(date, period){ return doc(db, "rollcall_attendance", `${date}_p${period}`); }
+
+const auth = getAuth(fbApp);
+const googleProvider = new GoogleAuthProvider();
+const staffColRef = collection(db, "rollcall_staff");
+let currentStaff = null; // { email, name } once signed in and authorized
+let authResolved = false;
 
 let cloudReady = false;
 let metaSnapshotHandled = false;
@@ -559,6 +575,7 @@ function saveClassHours(list){ return saveJSON(LS_CLASS_HOURS, list); }
 let students = loadStudents();
 let attendance = {};   // in-memory cache, populated on demand: { date: { periodIdx: { studentId: 'P'|'A' } } }
 const attendanceFetched = new Set(); // 'date_period' keys already fetched this session (avoid refetch spam)
+const periodMeta = {}; // 'date_period' -> { markedByName, markedByEmail, savedAt }
 
 async function fetchAttendanceDoc(date, period, forceRefresh){
   const key = date+'_'+period;
@@ -566,7 +583,14 @@ async function fetchAttendanceDoc(date, period, forceRefresh){
   try{
     const snap = await getDoc(attendanceDocRef(date, period));
     if(!attendance[date]) attendance[date] = {};
-    attendance[date][period] = snap.exists() ? (snap.data().marks || {}) : {};
+    if(snap.exists()){
+      const data = snap.data();
+      attendance[date][period] = data.marks || {};
+      periodMeta[key] = { markedByName: data.markedByName||'', markedByEmail: data.markedByEmail||'', savedAt: data.savedAt||'' };
+    } else {
+      attendance[date][period] = {};
+      delete periodMeta[key];
+    }
     attendanceFetched.add(key);
   }catch(e){ console.error('attendance fetch failed', e); }
 }
@@ -576,7 +600,10 @@ async function saveAttendanceDoc(date, period, marks){
   attendanceFetched.add(date+'_'+period);
   if(!cloudReady){ showStamp('SAVED ✓ (offline — will not sync)'); return true; }
   try{
-    await setDoc(attendanceDocRef(date, period), { marks, savedAt: new Date().toISOString() });
+    await setDoc(attendanceDocRef(date, period), {
+      marks, savedAt: new Date().toISOString(),
+      markedByEmail: currentStaff?.email || '', markedByName: currentStaff?.name || ''
+    });
     return true;
   }catch(e){
     console.error('attendance save failed', e);
@@ -589,50 +616,73 @@ let departments = loadDepartments();
 let classHours = loadClassHours();       // [{label,time}, ... up to 8]
 let editingStudentId = null;
 
-/* ============ Staff PIN gate ============ */
+/* ============ Staff Google Sign-In gate ============ */
 const loginScreen = document.getElementById('loginScreen');
 const appRoot = document.getElementById('appRoot');
-function currentPin(){ return localStorage.getItem(LS_PIN) || ''; }
-function isAuthed(){ return sessionStorage.getItem(SS_AUTHED)==='yes'; }
 
-function initAuthGate(){
-  const params = new URLSearchParams(location.search);
-  if(params.get('shared')){ appRoot.style.display='block'; loginScreen.style.display='none'; return; } // shared links skip login
-  const pin = currentPin();
-  if(!pin){
-    document.getElementById('loginTitle').textContent = 'Set a Staff PIN';
-    document.getElementById('loginSubtitle').textContent = 'Choose a 4–8 digit PIN staff will use to open this app on this device.';
-    loginScreen.style.display='flex'; appRoot.style.display='none';
-    return;
-  }
-  if(isAuthed()){ loginScreen.style.display='none'; appRoot.style.display='block'; return; }
-  document.getElementById('loginTitle').textContent = 'Staff Login';
-  document.getElementById('loginSubtitle').textContent = 'Enter the staff PIN to open RVS College of Engineering and Technology.';
+function showLoginState(state, detail){
+  document.getElementById('googleSignInBtn').style.display = state==='signin' ? 'flex' : 'none';
+  document.getElementById('deniedBox').style.display = state==='denied' ? 'block' : 'none';
+  document.getElementById('loginNote').style.display = state==='signin' ? 'block' : 'none';
+  if(state==='connecting'){ document.getElementById('loginTitle').textContent='Loading…'; document.getElementById('loginSubtitle').textContent='Connecting to the shared class database…'; }
+  else if(state==='signin'){ document.getElementById('loginTitle').textContent='Staff Login'; document.getElementById('loginSubtitle').textContent='Sign in with your staff Google account to open RVS College of Engineering and Technology.'; }
+  else if(state==='checking'){ document.getElementById('loginTitle').textContent='Checking access…'; document.getElementById('loginSubtitle').textContent='One moment…'; }
+  else if(state==='denied'){ document.getElementById('loginTitle').textContent='Not Authorized'; document.getElementById('loginSubtitle').textContent=''; document.getElementById('deniedEmail').textContent = detail||''; }
   loginScreen.style.display='flex'; appRoot.style.display='none';
 }
 
-document.getElementById('pinSubmitBtn').addEventListener('click', ()=>{
-  const entered = document.getElementById('pinInput').value.trim();
-  const pin = currentPin();
-  const err = document.getElementById('loginError');
-  if(!pin){
-    if(entered.length<4){ err.textContent='PIN must be at least 4 digits.'; err.style.display='block'; return; }
-    if(!safeSet(LS_PIN, entered)) return;
-    sessionStorage.setItem(SS_AUTHED,'yes');
-    loginScreen.style.display='none'; appRoot.style.display='block';
-    bootApp();
+document.getElementById('googleSignInBtn').addEventListener('click', async ()=>{
+  try{ await signInWithPopup(auth, googleProvider); }
+  catch(e){ console.error(e); alert('Sign-in failed: '+e.message); }
+});
+document.getElementById('deniedSignOutBtn').addEventListener('click', ()=> signOut(auth));
+document.getElementById('staffChip').addEventListener('click', ()=>{
+  if(currentStaff && confirm('Sign out of RVS Attendance Register?')) signOut(auth);
+});
+
+async function checkStaffAndProceed(user){
+  showLoginState('checking');
+  const email = (user.email||'').toLowerCase();
+  try{
+    const staffSnap = await getDocs(staffColRef);
+    if(staffSnap.empty){
+      // First person ever to sign in becomes the first authorized staff member
+      await setDoc(doc(staffColRef, email), { email, name: user.displayName||email, addedAt: new Date().toISOString() });
+      grantAccess(email, user.displayName||email);
+      return;
+    }
+    const match = staffSnap.docs.find(d=> d.id===email);
+    if(match){
+      setDoc(doc(staffColRef, email), { email, name: user.displayName||email, addedAt: match.data().addedAt||new Date().toISOString() }, {merge:true});
+      grantAccess(email, user.displayName||email);
+    } else {
+      showLoginState('denied', email);
+    }
+  }catch(e){
+    console.error('staff check failed', e);
+    alert('Could not verify staff access right now. Check your connection and try again.');
+    signOut(auth);
+  }
+}
+function grantAccess(email, name){
+  currentStaff = { email, name };
+  const chip = document.getElementById('staffChip');
+  chip.textContent = '👤 ' + name;
+  maybeBoot();
+}
+
+onAuthStateChanged(auth, user=>{
+  authResolved = true;
+  if(!user){
+    currentStaff = null;
+    document.getElementById('staffChip').textContent='';
+    const params = new URLSearchParams(location.search);
+    if(params.get('shared')) return; // shared links never need login
+    showLoginState('signin');
     return;
   }
-  if(entered===pin){
-    sessionStorage.setItem(SS_AUTHED,'yes');
-    err.style.display='none';
-    loginScreen.style.display='none'; appRoot.style.display='block';
-    bootApp();
-  } else {
-    err.textContent='Incorrect PIN. Try again.'; err.style.display='block';
-  }
+  checkStaffAndProceed(user);
 });
-document.getElementById('pinInput').addEventListener('keydown', e=>{ if(e.key==='Enter') document.getElementById('pinSubmitBtn').click(); });
 
 /* ============ Utils ============ */
 function uid(){ return 's_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
@@ -894,8 +944,10 @@ async function renderAttendanceView(){
   const existing = (attendance[date] && attendance[date][selectedPeriod]) || {};
   const hasExisting = Object.keys(existing).length>0;
   const isToday = date === todayStr();
+  const meta = periodMeta[date+'_'+selectedPeriod];
+  const markedByNote = (hasExisting && meta && meta.markedByName) ? ` · last saved by ${meta.markedByName}` : '';
   document.getElementById('dateEditNote').textContent = hasExisting
-    ? `Editing saved entries for ${periodLabel} on ${fmtDate(date)}${isToday?' (today)':''} — change and re-save to update them.`
+    ? `Editing saved entries for ${periodLabel} on ${fmtDate(date)}${isToday?' (today)':''}${markedByNote} — change and re-save to update them.`
     : `New entry for ${periodLabel} on ${fmtDate(date)}${isToday?' (today)':''}.`;
 
   list.innerHTML='';
@@ -1230,7 +1282,44 @@ function renderSettingsView(){
   const batches = [...new Set(students.filter(s=>!isActive(s) && s.batch).map(s=>s.batch))].sort().reverse();
   restoreSelect.innerHTML = '<option value="">— Select a batch —</option>' + batches.map(b=>`<option value="${escapeHtml(b)}">${escapeHtml(b)} (${students.filter(s=>s.batch===b && !isActive(s)).length} students)</option>`).join('');
   if(batches.includes(currentBatch)) restoreSelect.value = currentBatch;
+
+  renderStaffList();
 }
+async function renderStaffList(){
+  const wrap = document.getElementById('staffList');
+  wrap.innerHTML = '<p style="color:#6C8499;font-size:12.5px;">Loading staff list…</p>';
+  try{
+    const snap = await getDocs(staffColRef);
+    wrap.innerHTML='';
+    if(snap.empty){ wrap.innerHTML = '<p style="color:#6C8499;font-size:12.5px;">No staff added yet.</p>'; return; }
+    snap.forEach(d=>{
+      const data = d.data();
+      const chip = document.createElement('div'); chip.className='chip'; chip.style.marginBottom='6px'; chip.style.display='flex';
+      chip.innerHTML = `<span>${escapeHtml(data.name||d.id)} <span class="mono" style="color:#5B7285;">(${escapeHtml(d.id)})</span></span><button data-remove-staff="${escapeHtml(d.id)}">✕</button>`;
+      wrap.appendChild(chip);
+    });
+  }catch(e){ console.error(e); wrap.innerHTML = '<p style="color:#6C8499;font-size:12.5px;">Could not load staff list.</p>'; }
+}
+document.getElementById('addStaffBtn').addEventListener('click', async ()=>{
+  const input = document.getElementById('newStaffInput');
+  const email = input.value.trim().toLowerCase();
+  if(!email || !email.includes('@')){ alert('Enter a valid email address.'); return; }
+  try{
+    await setDoc(doc(staffColRef, email), { email, name:'', addedAt: new Date().toISOString() }, {merge:true});
+    input.value='';
+    showStamp('STAFF ADDED ✓');
+    renderStaffList();
+  }catch(e){ console.error(e); alert('Could not add staff member — check your connection.'); }
+});
+document.getElementById('staffList').addEventListener('click', async e=>{
+  const btn = e.target.closest('[data-remove-staff]');
+  if(!btn) return;
+  const email = btn.dataset.removeStaff;
+  if(currentStaff && email===currentStaff.email){ alert("You can't remove your own account while signed in."); return; }
+  if(!confirm(`Remove ${email} from the staff list? They'll lose access immediately.`)) return;
+  try{ await deleteDoc(doc(staffColRef, email)); renderStaffList(); }
+  catch(e){ console.error(e); alert('Could not remove staff member — check your connection.'); }
+});
 document.getElementById('addDeptBtn').addEventListener('click', ()=>{
   const input = document.getElementById('newDeptInput');
   const name = input.value.trim();
@@ -1289,16 +1378,7 @@ document.getElementById('restoreBatchBtn').addEventListener('click', ()=>{
   const next = students.map(s => groupIds.has(s.id) ? {...s, status:'active', batch:''} : s);
   if(saveStudents(next)){ students = next; renderStudents(); renderSettingsView(); showStamp('RESTORED ✓'); }
 });
-document.getElementById('changePinBtn').addEventListener('click', ()=>{
-  const cur = document.getElementById('currentPinInput').value.trim();
-  const next = document.getElementById('newPinInput').value.trim();
-  if(cur !== currentPin()){ alert('Current PIN is incorrect.'); return; }
-  if(next.length<4){ alert('New PIN must be at least 4 digits.'); return; }
-  if(safeSet(LS_PIN, next)){
-    document.getElementById('currentPinInput').value=''; document.getElementById('newPinInput').value='';
-    showStamp('PIN UPDATED ✓');
-  }
-});
+
 document.getElementById('exportBtn').addEventListener('click', ()=>{
   // Attendance is intentionally NOT included here — it's already safely split across many small
   // Firestore documents (one per date+period), so there's no single blob of it to export.
@@ -1393,24 +1473,17 @@ function bootApp(){
 }
 
 if(!loadSharedFromUrl()){
-  // Hold the login screen in a "connecting" state until we hear from Firestore at least once
-  document.getElementById('loginTitle').textContent = 'Loading…';
-  document.getElementById('loginSubtitle').textContent = 'Connecting to the shared class database…';
-  document.getElementById('pinInput').style.display='none';
-  document.getElementById('pinSubmitBtn').style.display='none';
-  loginScreen.style.display='flex';
+  if(!authResolved) showLoginState('connecting');
 
-  let bootStarted = false;
-  function maybeStartApp(){
-    // wait for BOTH the meta doc (departments/hours/holidays) and the students collection
-    // before showing the app, so the first screen isn't missing data
-    if(bootStarted) return;
-    if(!metaSnapshotHandled || !studentsSnapshotHandled) return;
-    bootStarted = true;
-    document.getElementById('pinInput').style.display='';
-    document.getElementById('pinSubmitBtn').style.display='';
-    initAuthGate();
-    if(appRoot.style.display==='block') bootApp();
+  let dataReady = false;
+  let appBooted = false;
+  function maybeBoot(){
+    if(appBooted) return;
+    if(!currentStaff) return; // not signed in / not yet approved
+    if(!dataReady){ showLoginState('connecting'); return; }
+    appBooted = true;
+    loginScreen.style.display='none'; appRoot.style.display='block';
+    bootApp();
   }
 
   onSnapshot(metaRef, snap=>{
@@ -1428,14 +1501,16 @@ if(!loadSharedFromUrl()){
       setDoc(metaRef, { departments, classHours, holidays }); // first ever run: seed from this device
     }
     metaSnapshotHandled = true;
-    if(bootStarted) refreshCurrentView();
-    maybeStartApp();
+    dataReady = metaSnapshotHandled && studentsSnapshotHandled;
+    if(appBooted) refreshCurrentView();
+    maybeBoot();
   }, err=>{
     console.error('Firestore meta connection failed', err);
     cloudReady = false;
     setCloudStatus('⚠ Offline (local only)');
     metaSnapshotHandled = true;
-    maybeStartApp();
+    dataReady = metaSnapshotHandled && studentsSnapshotHandled;
+    maybeBoot();
   });
 
   onSnapshot(studentsColRef, snap=>{
@@ -1444,12 +1519,14 @@ if(!loadSharedFromUrl()){
     students = list;
     safeSet(LS_STUDENTS, JSON.stringify(students));
     studentsSnapshotHandled = true;
-    if(bootStarted) refreshCurrentView();
-    maybeStartApp();
+    dataReady = metaSnapshotHandled && studentsSnapshotHandled;
+    if(appBooted) refreshCurrentView();
+    maybeBoot();
   }, err=>{
     console.error('Firestore students connection failed', err);
     studentsSnapshotHandled = true;
-    maybeStartApp();
+    dataReady = metaSnapshotHandled && studentsSnapshotHandled;
+    maybeBoot();
   });
 } else {
   document.getElementById('todayChip').textContent = '';
