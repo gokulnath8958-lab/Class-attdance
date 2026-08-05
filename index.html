@@ -239,6 +239,7 @@
     <button class="tab-btn active" data-view="students">Students</button>
     <button class="tab-btn" data-view="attendance">Mark Attendance</button>
     <button class="tab-btn" data-view="reports">Reports</button>
+    <button class="tab-btn" data-view="semester">Semester</button>
     <button class="tab-btn" data-view="settings">Settings</button>
   </nav>
 </header>
@@ -333,6 +334,34 @@
         <div id="reportsEmpty" class="empty-state" style="display:none;">
           <span class="stamp-icon">📊</span>No attendance recorded yet for this range.
         </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- SEMESTER -->
+  <section class="view" id="view-semester">
+    <div class="panel">
+      <div class="panel-head">
+        <div><h2>Current Semester</h2><p>Attendance is tallied against total periods held from the semester's start to its end.</p></div>
+      </div>
+      <div class="panel-body" id="currentSemesterBox">
+        <p style="color:#6C8499;font-size:13px;">Loading…</p>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div><h2>Semester Attendance Report</h2><p>Total periods present out of total periods held, for a chosen semester.</p></div>
+      </div>
+      <div class="panel-body">
+        <div class="filter-row" style="margin-top:0;">
+          <select id="semesterReportSelect" style="min-width:200px;"></select>
+          <select id="semReportDeptFilter"><option value="">All Departments</option></select>
+          <select id="semReportYearFilter"><option value="">All Years</option><option>1st Year</option><option>2nd Year</option><option>3rd Year</option><option>Final Year</option></select>
+          <select id="semReportSectionFilter"><option value="">All Sections</option><option value="A">Section A</option><option value="B">Section B</option></select>
+          <button class="btn btn-brass btn-sm" id="loadSemReportBtn">Load Report</button>
+        </div>
+        <div id="semReportBody" style="margin-top:16px;"></div>
       </div>
     </div>
   </section>
@@ -484,6 +513,7 @@ const db = getFirestore(fbApp);
    - rollcall_attendance/{date}_p{period} → ONE small document per date+period (not one growing blob) */
 const metaRef = doc(db, "rollcall_meta", "config");
 const studentsColRef = collection(db, "rollcall_students");
+const semestersColRef = collection(db, "rollcall_semesters");
 function attendanceDocRef(date, period){ return doc(db, "rollcall_attendance", `${date}_p${period}`); }
 
 const auth = getAuth(fbApp);
@@ -709,6 +739,15 @@ function last15Dates(offset){
   for(let i=14;i>=0;i--){ const d=new Date(base); d.setDate(base.getDate()-i); arr.push(d.toISOString().slice(0,10)); }
   return arr;
 }
+function datesBetween(startStr, endStr){
+  const arr=[];
+  const start = new Date(startStr+'T00:00:00');
+  const end = new Date(endStr+'T00:00:00');
+  for(let d=new Date(start); d<=end; d.setDate(d.getDate()+1)){
+    arr.push(d.toISOString().slice(0,10));
+  }
+  return arr;
+}
 function initials(name){ return name.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
 function escapeHtml(str){ return (str||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 function showStamp(text){ const t=document.getElementById('stampToast'); t.textContent=text; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1400); }
@@ -764,6 +803,7 @@ document.getElementById('tabNav').addEventListener('click', e=>{
   if(btn.dataset.view==='attendance') renderAttendanceView();
   if(btn.dataset.view==='reports') renderReportsView();
   if(btn.dataset.view==='settings') renderSettingsView();
+  if(btn.dataset.view==='semester') renderSemesterTab();
 });
 
 /* ============ Students CRUD ============ */
@@ -1271,6 +1311,122 @@ document.getElementById('copyShareLinkBtn').addEventListener('click', ()=>{
   navigator.clipboard?.writeText(input.value).then(()=>showStamp('LINK COPIED ✓')).catch(()=>{ document.execCommand('copy'); showStamp('LINK COPIED ✓'); });
 });
 document.querySelectorAll('.modal-overlay').forEach(ov=> ov.addEventListener('click', e=>{ if(e.target===ov) ov.classList.remove('active'); }));
+
+/* ============ Semester cycle ============ */
+async function loadSemesters(){
+  const snap = await getDocs(semestersColRef);
+  return snap.docs.map(d=>({ id:d.id, ...d.data() })).sort((a,b)=> (b.startDate||'').localeCompare(a.startDate||''));
+}
+
+async function renderSemesterTab(){
+  const box = document.getElementById('currentSemesterBox');
+  box.innerHTML = '<p style="color:#6C8499;font-size:13px;">Loading…</p>';
+  refreshDeptSelects();
+  populateDeptSelect(document.getElementById('semReportDeptFilter'), true);
+  let semesters;
+  try{ semesters = await loadSemesters(); }
+  catch(e){ console.error(e); box.innerHTML='<p style="color:#6C8499;font-size:13px;">Could not load semester data.</p>'; return; }
+
+  const active = semesters.find(s=>s.status==='active');
+  if(!active){
+    box.innerHTML = `
+      <p style="font-size:13.5px;color:#5B7285;margin-top:0;">No semester is currently running. Start one to begin tracking semester-wide attendance.</p>
+      <div class="date-picker-row">
+        <input type="text" id="newSemesterNameInput" placeholder="e.g. Semester 1 - 2026" style="flex:1;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;">
+        <button class="btn btn-brass btn-sm" id="startSemesterBtn">▶ Start Semester</button>
+      </div>`;
+    document.getElementById('startSemesterBtn').addEventListener('click', async ()=>{
+      const name = document.getElementById('newSemesterNameInput').value.trim();
+      if(!name){ alert('Enter a name for this semester.'); return; }
+      try{
+        const ref = doc(semestersColRef);
+        await setDoc(ref, { name, startDate: todayStr(), endDate:'', status:'active' });
+        showStamp('SEMESTER STARTED ✓');
+        renderSemesterTab();
+      }catch(e){ console.error(e); alert('Could not start semester — check your connection.'); }
+    });
+  } else {
+    const daysSoFar = datesBetween(active.startDate, todayStr()).length;
+    box.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+        <div>
+          <h3 class="slab" style="margin:0 0 4px 0;font-size:17px;">${escapeHtml(active.name)}</h3>
+          <span style="font-size:12.5px;color:#5B7285;">Started ${fmtDate(active.startDate)} · ${daysSoFar} day${daysSoFar!==1?'s':''} so far</span>
+        </div>
+        <button class="btn btn-danger btn-outline btn-sm" id="finishSemesterBtn">🏁 Finish Semester &amp; Start New</button>
+      </div>`;
+    document.getElementById('finishSemesterBtn').addEventListener('click', async ()=>{
+      if(!confirm(`Finish "${active.name}"? Its attendance record stays saved and selectable in the Semester Report below. You'll then be asked to name the next semester.`)) return;
+      const newName = prompt('Name for the new semester (e.g. "Semester 2 - 2026"):', '');
+      if(!newName) return;
+      try{
+        await setDoc(doc(semestersColRef, active.id), { endDate: todayStr(), status:'closed' }, {merge:true});
+        const ref = doc(semestersColRef);
+        await setDoc(ref, { name:newName, startDate: todayStr(), endDate:'', status:'active' });
+        showStamp('SEMESTER CLOSED — NEW ONE STARTED ✓');
+        renderSemesterTab();
+      }catch(e){ console.error(e); alert('Could not finish semester — check your connection.'); }
+    });
+  }
+
+  const select = document.getElementById('semesterReportSelect');
+  const currentSelection = select.value;
+  select.innerHTML = semesters.map(s=> `<option value="${s.id}">${escapeHtml(s.name)}${s.status==='active'?' (current)':''} — from ${fmtDate(s.startDate)}</option>`).join('')
+    || '<option value="">No semesters yet</option>';
+  if(semesters.some(s=>s.id===currentSelection)) select.value = currentSelection;
+}
+
+document.getElementById('loadSemReportBtn').addEventListener('click', async ()=>{
+  const semId = document.getElementById('semesterReportSelect').value;
+  const body = document.getElementById('semReportBody');
+  if(!semId){ body.innerHTML = '<p style="color:#6C8499;font-size:13px;">Start a semester first.</p>'; return; }
+  body.innerHTML = '<p style="color:#6C8499;font-size:13px;">Loading semester report — this can take a few seconds for a full semester…</p>';
+
+  let semesters;
+  try{ semesters = await loadSemesters(); }catch(e){ body.innerHTML='<p style="color:#6C8499;font-size:13px;">Could not load semester data.</p>'; return; }
+  const sem = semesters.find(s=>s.id===semId);
+  if(!sem){ body.innerHTML='<p style="color:#6C8499;font-size:13px;">Semester not found.</p>'; return; }
+
+  const dates = datesBetween(sem.startDate, sem.endDate || todayStr());
+  const deptFilter = document.getElementById('semReportDeptFilter').value;
+  const yearFilter = document.getElementById('semReportYearFilter').value;
+  const sectionFilter = document.getElementById('semReportSectionFilter').value;
+  const roster = students.filter(s=>
+    isActive(s) &&
+    (!deptFilter || s.department===deptFilter) &&
+    (!yearFilter || s.year===yearFilter) &&
+    (!sectionFilter || s.section===sectionFilter)
+  );
+  if(roster.length===0){ body.innerHTML = '<p style="color:#6C8499;font-size:13px;">No active students match these filters.</p>'; return; }
+
+  const fetches = [];
+  dates.forEach(d=>{
+    if(holidays[d]) return;
+    classHours.forEach((_,p)=> fetches.push(fetchAttendanceDoc(d, p)));
+  });
+  await Promise.all(fetches);
+
+  let rows = '<thead><tr><th>Student</th><th>Present/Marked</th><th>%</th></tr></thead><tbody>';
+  roster.forEach(s=>{
+    let present=0, marked=0;
+    dates.forEach(d=>{
+      if(holidays[d]) return;
+      const dayRec = attendance[d];
+      if(!dayRec) return;
+      Object.keys(dayRec).forEach(pIdx=>{
+        const rec = dayRec[pIdx];
+        if(rec && rec[s.id]){ marked++; if(rec[s.id]==='P') present++; }
+      });
+    });
+    const pct = marked>0 ? Math.round((present/marked)*100) : null;
+    rows += `<tr><td>${escapeHtml(s.name)}<br><span class="reg-badge mono" style="margin-top:2px;">${escapeHtml(s.regNo)}</span>${s.department?`<span class="dept-badge">${escapeHtml(s.department)}</span>`:''}${s.year?`<span class="year-badge">${escapeHtml(s.year)}${s.section?' '+escapeHtml(s.section):''}</span>`:''}</td>
+      <td style="text-align:center;">${marked>0? present+'/'+marked : '—'}</td>
+      <td style="text-align:center;"><span class="pct-pill ${pct===null?'':pctClass(pct)}">${pct===null?'—':pct+'%'}</span></td></tr>`;
+  });
+  rows += '</tbody>';
+  body.innerHTML = `<p style="font-size:12.5px;color:#5B7285;margin-top:0;">${escapeHtml(sem.name)} · ${fmtDate(sem.startDate)} – ${sem.endDate?fmtDate(sem.endDate):'ongoing'} (${dates.length} calendar days)</p>
+    <div class="table-wrap"><table>${rows}</table></div>`;
+});
 
 /* ============ Settings ============ */
 function renderSettingsView(){
