@@ -696,7 +696,7 @@ function get15DayBlockDates(blockIndex){
 }
 
 function initials(name){ return name.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
-function escapeHtml(str){ return (str||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function escapeHtml(str){ return (str||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;n'}[m])); }
 function showStamp(text){ const t=document.getElementById('stampToast'); t.textContent=text; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1400); }
 function pctClass(p){ if(p>=85) return 'pct-good'; if(p>=60) return 'pct-warn'; return 'pct-bad'; }
 
@@ -705,7 +705,6 @@ function studentCumulativeData(studentId, upToBlockOffset){
   let cumulativePresent = 0;
   let cumulativeMarked = 0;
 
-  // Aggregate from block upToBlockOffset down to block 0 (chronologically or simply summing totals per block)
   for(let b = upToBlockOffset; b >= 0; b--){
     const dates = get15DayBlockDates(b);
     dates.forEach(d=>{
@@ -798,7 +797,8 @@ function renderStudents(){
   filtered.forEach(s=>{
     const card = document.createElement('div');
     card.className='student-card';
-    const pct = overallPercentage(s.id);
+    const cumData = studentCumulativeData(s.id, reportOffset);
+    const badgeText = cumData.pct === null ? 'No data yet' : `${cumData.pct}% (${cumData.present}/${cumData.marked})`;
     card.innerHTML = `
       <div class="card-actions">
         <button class="icon-btn" data-edit="${s.id}" title="Edit">✎</button>
@@ -811,7 +811,7 @@ function renderStudents(){
         ${s.year ? `<span class="year-badge">${escapeHtml(s.year)}${s.section?' - '+escapeHtml(s.section):''}</span>`:''}
         ${!isActive(s) ? `<span class="alumni-badge">🎓 Batch ${escapeHtml(s.batch||'—')}</span>`:''}
         ${s.parentPhone ? `<div style="margin-top:4px;font-size:11px;color:#5B7285;">📞 ${escapeHtml(s.parentPhone)}</div>` : ''}
-        <div style="margin-top:6px;"><span class="pct-pill ${pct===null?'':pctClass(pct)}">${pct===null?'No data yet':pct+'% overall'}</span></div>
+        <div style="margin-top:6px;"><span class="pct-pill ${cumData.pct===null?'':pctClass(cumData.pct)}">${badgeText}</span></div>
       </div>`;
     grid.appendChild(card);
   });
@@ -1065,7 +1065,6 @@ async function renderReportsView(){
   const thisCallToken = ++reportsRenderToken;
   document.getElementById('reportRangeLabel').textContent = `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} (Cumulative percentage summing current and previous 15-day blocks)`;
 
-  // Fetch all historical dates up to reportOffset blocks back so we can accurately accumulate
   const allNeededDates = [];
   for(let b = reportOffset; b >= 0; b--){
     allNeededDates.push(...get15DayBlockDates(b));
@@ -1099,13 +1098,14 @@ async function renderReportsView(){
     const cumData = studentCumulativeData(s.id, reportOffset);
     const row = document.createElement('div');
     row.className='roster-report-row';
+    const displayStr = cumData.pct === null ? '—' : `${cumData.pct}% (${cumData.present}/${cumData.marked})`;
     row.innerHTML = `
       ${s.photo ? `<img class="avatar" src="${s.photo}" alt="${s.name}">` : `<div class="avatar-fallback">${initials(s.name)}</div>`}
       <div class="student-info">
         <h3 style="margin:0 0 2px 0;font-size:14.5px;">${escapeHtml(s.name)}</h3>
         <span class="reg-badge mono">${escapeHtml(s.regNo)}</span>${s.department?`<span class="dept-badge">${escapeHtml(s.department)}</span>`:''}${s.year?`<span class="year-badge">${escapeHtml(s.year)}${s.section?' '+escapeHtml(s.section):''}</span>`:''}
       </div>
-      <span class="pct-pill ${cumData.pct===null?'':pctClass(cumData.pct)}">${cumData.pct===null?'—':cumData.pct+'%'} (${cumData.present}/${cumData.marked})</span>
+      <span class="pct-pill ${cumData.pct===null?'':pctClass(cumData.pct)}">${displayStr}</span>
       <button class="btn btn-outline btn-sm" data-show="${s.id}">Show Attendance</button>
     `;
     rosterWrap.appendChild(row);
@@ -1113,7 +1113,7 @@ async function renderReportsView(){
 
   let thead = '<thead><tr><th>Student</th>';
   dates.forEach(d=> thead += `<th>${fmtDate(d).replace(', ',' ')}</th>`);
-  thead += '<th>Cumulative %</th></tr></thead>';
+  thead += '<th>Cumulative % / Periods</th></tr></thead>';
 
   let tbody = '<tbody>';
   roster.forEach(s=>{
@@ -1126,7 +1126,8 @@ async function renderReportsView(){
       tbody += `<td class="${cls}">${summary.present}/${summary.marked}</td>`;
     });
     const cumData = studentCumulativeData(s.id, reportOffset);
-    tbody += `<td><span class="pct-pill ${cumData.pct===null?'':pctClass(cumData.pct)}">${cumData.pct===null?'—':cumData.pct+'%'}</span></td></tr>`;
+    const displayStr = cumData.pct === null ? '—' : `${cumData.pct}% (${cumData.present}/${cumData.marked})`;
+    tbody += `<td><span class="pct-pill ${cumData.pct===null?'':pctClass(cumData.pct)}">${displayStr}</span></td></tr>`;
   });
   tbody += '</tbody>';
   table.innerHTML = thead + tbody;
@@ -1188,9 +1189,10 @@ function renderParentNotifyPanel(dates, roster){
   withPhone.forEach(s=>{
     const cumData = studentCumulativeData(s.id, reportOffset);
     const sent = sentList.includes(s.id);
+    const displayStr = cumData.pct === null ? '—' : `${cumData.pct}% (${cumData.present}/${cumData.marked})`;
     rows += `<div class="pn-row">
       <div class="pn-info"><strong>${escapeHtml(s.name)}</strong> <span class="reg-badge mono">${escapeHtml(s.regNo)}</span><div class="pn-phone">📞 ${escapeHtml(s.parentPhone)}</div></div>
-      <span class="pct-pill ${cumData.pct===null?'':pctClass(cumData.pct)}">${cumData.pct===null?'—':cumData.pct+'%'}</span>
+      <span class="pct-pill ${cumData.pct===null?'':pctClass(cumData.pct)}">${displayStr}</span>
       ${sent ? `<span class="pn-sent">Sent ✓</span>` : `<button class="btn btn-sm btn-sms" data-notify="${s.id}">✉️ Send SMS</button>`}
     </div>`;
   });
@@ -1203,7 +1205,8 @@ function renderParentNotifyPanel(dates, roster){
       const sid = btn.dataset.notify;
       const s = students.find(x=>x.id===sid);
       const cumData = studentCumulativeData(sid, reportOffset);
-      const msg = `Attendance update: ${s.name} (${s.regNo}) has ${cumData.pct===null?'—':cumData.pct+'%'} cumulative attendance up to ${fmtDate(dates[dates.length-1])}.`;
+      const displayStr = cumData.pct === null ? '—' : `${cumData.pct}% (${cumData.present}/${cumData.marked})`;
+      const msg = `Attendance update: ${s.name} (${s.regNo}) has ${displayStr} cumulative attendance up to ${fmtDate(dates[dates.length-1])}.`;
       const encoded = encodeURIComponent(msg);
       const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
       const phone = s.parentPhone.replace(/[^\d+]/g,'');
@@ -1240,11 +1243,12 @@ function openShowModal(studentId){
     }
     rows += `<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line);font-size:13.5px;"><span>${fmtDate(d)}</span>${label}</div>`;
   });
+  const displayStr = cumData.pct === null ? 'No data' : `${cumData.pct}% cumulative (${cumData.present}/${cumData.marked})`;
   document.getElementById('showModalBody').innerHTML = `
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
       ${s.photo ? `<img class="avatar" src="${s.photo}" style="width:48px;height:48px;">` : `<div class="avatar-fallback">${initials(s.name)}</div>`}
       <div><div style="font-weight:600;">${escapeHtml(s.name)} <span class="reg-badge mono">${escapeHtml(s.regNo)}</span></div>
-      <span class="pct-pill ${cumData.pct===null?'':pctClass(cumData.pct)}">${cumData.pct===null?'No data':cumData.pct+'% cumulative (${cumData.present}/${cumData.marked})'}</span></div>
+      <span class="pct-pill ${cumData.pct===null?'':pctClass(cumData.pct)}">${displayStr}</span></div>
     </div>
     <p style="font-size:11.5px;color:#5B7285;margin:0 0 8px 0;">Daily breakdown for the selected 15-day range:</p>${rows}`;
   document.getElementById('showModalOverlay').classList.add('active');
@@ -1268,7 +1272,9 @@ document.getElementById('shareReportBtn').addEventListener('click', ()=>{
     students: roster.map(s=>({
       name:s.name, regNo:s.regNo, department:s.department||'',
       daily: dates.map(d=>{ if(holidays[d]) return null; return dayPeriodsSummary(d, s.id); }),
-      pct: studentCumulativeData(s.id, reportOffset).pct
+      pct: studentCumulativeData(s.id, reportOffset).pct,
+      present: studentCumulativeData(s.id, reportOffset).present,
+      marked: studentCumulativeData(s.id, reportOffset).marked
     }))
   };
   const encoded = btoa(encodeURIComponent(JSON.stringify(snapshot)));
@@ -1449,17 +1455,18 @@ function loadSharedFromUrl(){
   rosterWrap.innerHTML='';
   snapshot.students.forEach(s=>{
     const row = document.createElement('div'); row.className='roster-report-row';
+    const displayStr = s.pct === null ? '—' : `${s.pct}% (${s.present}/${s.marked})`;
     row.innerHTML = `<div class="avatar-fallback">${initials(s.name)}</div>
       <div class="student-info"><h3 style="margin:0 0 2px 0;font-size:14.5px;">${escapeHtml(s.name)}</h3>
       <span class="reg-badge mono">${escapeHtml(s.regNo)}</span>${s.department?`<span class="dept-badge">${escapeHtml(s.department)}</span>`:''}</div>
-      <span class="pct-pill ${s.pct===null?'':pctClass(s.pct)}">${s.pct===null?'—':s.pct+'%'}</span>`;
+      <span class="pct-pill ${s.pct===null?'':pctClass(s.pct)}">${displayStr}</span>`;
     rosterWrap.appendChild(row);
   });
 
   const table = document.getElementById('sharedTable');
   let thead = '<thead><tr><th>Student</th>';
   snapshot.dates.forEach(d=> thead += `<th>${fmtDate(d).replace(', ',' ')}</th>`);
-  thead += '<th>%</th></tr></thead>';
+  thead += '<th>% / Periods</th></tr></thead>';
   let tbody = '<tbody>';
   snapshot.students.forEach((s,si)=>{
     tbody += `<tr><td>${escapeHtml(s.name)}<br><span class="reg-badge mono" style="margin-top:2px;">${escapeHtml(s.regNo)}</span></td>`;
@@ -1469,7 +1476,8 @@ function loadSharedFromUrl(){
       const cls = day.present===day.marked ? 'mark-P' : (day.present===0 ? 'mark-A' : '');
       tbody += `<td class="${cls}">${day.present}/${day.marked}</td>`;
     });
-    tbody += `<td><span class="pct-pill ${s.pct===null?'':pctClass(s.pct)}">${s.pct===null?'—':s.pct+'%'}</span></td></tr>`;
+    const displayStr = s.pct === null ? '—' : `${s.pct}% (${s.present}/${s.marked})`;
+    tbody += `<td><span class="pct-pill ${s.pct===null?'':pctClass(s.pct)}">${displayStr}</span></td></tr>`;
   });
   tbody += '</tbody>';
   table.innerHTML = thead + tbody;
