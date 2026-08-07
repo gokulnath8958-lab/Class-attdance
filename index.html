@@ -1015,6 +1015,7 @@ document.getElementById('thresholdInput').addEventListener('input', ()=>{
 });
 
 async function renderReportsView(){
+  // Gather dates for the current view range (or accumulate across ranges if calculating multi-cycle totals)
   const dates = last15Dates(reportOffset);
   document.getElementById('nextPeriodBtn').disabled = reportOffset===0;
   document.getElementById('currentPeriodBtn').style.display = reportOffset===0 ? 'none' : 'inline-flex';
