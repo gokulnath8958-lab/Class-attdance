@@ -65,7 +65,6 @@
   .panel-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:18px 20px;border-bottom:1px solid var(--line);}
   .panel-head h2{margin:0;font-size:19px;font-weight:600;}
   .panel-head p{margin:3px 0 0 0;font-size:13px;color:#5B7285;}
-  .panel-body{padding:20px;}
 
   .btn{border:none;border-radius:8px;padding:10px 16px;font-size:13.5px;font-weight:600;display:inline-flex;align-items:center;gap:7px;transition:transform .1s ease, opacity .15s ease;}
   .btn:active{transform:scale(0.97);}
@@ -106,8 +105,6 @@
     width:100%;padding:10px 12px;border:1.5px solid var(--line);border-radius:8px;background:#fff;font-size:14px;color:var(--ink);
   }
   .field input:focus,.field select:focus{outline:2px solid var(--brass);outline-offset:1px;border-color:var(--brass);}
-  .photo-row{display:flex;align-items:center;gap:14px;}
-  .photo-preview{width:64px;height:64px;border-radius:50%;object-fit:cover;background:var(--paper-alt);border:2px dashed var(--line);display:flex;align-items:center;justify-content:center;color:#6C8499;font-size:11px;text-align:center;flex-shrink:0;}
   .form-actions{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap;}
 
   .modal-overlay{display:none;position:fixed;inset:0;background:rgba(23,48,41,0.55);z-index:100;align-items:center;justify-content:center;padding:20px;backdrop-filter:blur(1px);}
@@ -361,12 +358,6 @@
         </div>
 
         <div class="settings-block">
-          <h3>Semester Cycle</h3>
-          <p class="hint">Reports calculate cumulative attendance from this start date. Finish a semester to close it out and start the next one.</p>
-          <div id="currentSemesterBox"><p style="color:#6C8499;font-size:13px;">Loading…</p></div>
-        </div>
-
-        <div class="settings-block">
           <h3>Year-End Promotion</h3>
           <p class="hint">At the end of the academic year, move every student in a year up to the next one. Final Year students are marked Passed Out / Alumni instead — their profile and full attendance history stay saved under a batch name, just hidden from the active roster and attendance marking.</p>
           <div class="field">
@@ -486,7 +477,6 @@ const db = getFirestore(fbApp);
 
 const metaRef = doc(db, "rollcall_meta", "config");
 const studentsColRef = collection(db, "rollcall_students");
-const semestersColRef = collection(db, "rollcall_semesters");
 function attendanceDocRef(date, period){ return doc(db, "rollcall_attendance", `${date}_p${period}`); }
 
 const auth = getAuth(fbApp);
@@ -700,15 +690,6 @@ function last15Dates(offset){
   offset = offset||0;
   const arr=[]; const base=new Date(); base.setDate(base.getDate()-(offset*15));
   for(let i=14;i>=0;i--){ const d=new Date(base); d.setDate(base.getDate()-i); arr.push(d.toISOString().slice(0,10)); }
-  return arr;
-}
-function datesBetween(startStr, endStr){
-  const arr=[];
-  const start = new Date(startStr+'T00:00:00');
-  const end = new Date(endStr+'T00:00:00');
-  for(let d=new Date(start); d<=end; d.setDate(d.getDate()+1)){
-    arr.push(d.toISOString().slice(0,10));
-  }
   return arr;
 }
 function initials(name){ return name.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
@@ -1033,8 +1014,6 @@ document.getElementById('thresholdInput').addEventListener('input', ()=>{
   if(document.getElementById('view-reports').classList.contains('active')) renderReportsView();
 });
 
-let activeSemesterStartDate = null;
-
 async function renderReportsView(){
   const dates = last15Dates(reportOffset);
   document.getElementById('nextPeriodBtn').disabled = reportOffset===0;
@@ -1053,25 +1032,13 @@ async function renderReportsView(){
   const rosterWrap = document.getElementById('rosterReport');
   const table = document.getElementById('reportTable');
   const empty = document.getElementById('reportsEmpty');
-  rosterWrap.innerHTML=''; table.innerHTML = '<caption style="padding:16px;color:#6C8499;font-size:13px;text-align:left;">Loading cumulative attendance from semester start…</caption>';
+  rosterWrap.innerHTML=''; table.innerHTML = '<caption style="padding:16px;color:#6C8499;font-size:13px;text-align:left;">Loading attendance…</caption>';
 
   const thisCallToken = ++reportsRenderToken;
-
-  try{
-    const semSnap = await getDocs(semestersColRef);
-    const active = semSnap.docs.map(d=>d.data()).find(s=>s.status==='active');
-    activeSemesterStartDate = active ? active.startDate : null;
-  }catch(e){ console.error('semester lookup failed', e); activeSemesterStartDate = null; }
-  if(thisCallToken !== reportsRenderToken) return;
-
-  const cumulativeDates = activeSemesterStartDate ? datesBetween(activeSemesterStartDate, dates[dates.length-1]) : dates;
-
-  document.getElementById('reportRangeLabel').textContent = activeSemesterStartDate
-    ? `Cumulative from semester start (${fmtDate(activeSemesterStartDate)}) through ${fmtDate(dates[dates.length-1])} · grid below shows ${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])}`
-    : `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} (no active semester — start one in the Semester tab for cumulative tracking)`;
+  document.getElementById('reportRangeLabel').textContent = `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} (percentage across all periods in this 15-day range)`;
 
   const fetches = [];
-  cumulativeDates.forEach(d=>{
+  dates.forEach(d=>{
     if(holidays[d]) return;
     classHours.forEach((_,p)=> fetches.push(fetchAttendanceDoc(d, p)));
   });
@@ -1095,7 +1062,7 @@ async function renderReportsView(){
   document.getElementById('shareReportBtn').disabled = false;
 
   roster.forEach(s=>{
-    const pct = studentPercentage(s.id, cumulativeDates);
+    const pct = studentPercentage(s.id, dates);
     const row = document.createElement('div');
     row.className='roster-report-row';
     row.innerHTML = `
@@ -1112,7 +1079,7 @@ async function renderReportsView(){
 
   let thead = '<thead><tr><th>Student</th>';
   dates.forEach(d=> thead += `<th>${fmtDate(d).replace(', ',' ')}</th>`);
-  thead += '<th>Cumulative %</th></tr></thead>';
+  thead += '<th>Period %</th></tr></thead>';
 
   let tbody = '<tbody>';
   roster.forEach(s=>{
@@ -1124,43 +1091,43 @@ async function renderReportsView(){
       const cls = summary.present===summary.marked ? 'mark-P' : (summary.present===0 ? 'mark-A' : '');
       tbody += `<td class="${cls}">${summary.present}/${summary.marked}</td>`;
     });
-    const pct = studentPercentage(s.id, cumulativeDates);
+    const pct = studentPercentage(s.id, dates);
     tbody += `<td><span class="pct-pill ${pct===null?'':pctClass(pct)}">${pct===null?'—':pct+'%'}</span></td></tr>`;
   });
   tbody += '</tbody>';
   table.innerHTML = thead + tbody;
 
-  renderCycleBanner(dates, cumulativeDates, roster);
-  renderParentNotifyPanel(dates, cumulativeDates, roster);
+  renderCycleBanner(dates, roster);
+  renderParentNotifyPanel(dates, roster);
 }
 
-function renderCycleBanner(dates, cumulativeDates, roster){
+function renderCycleBanner(dates, roster){
   const banner = document.getElementById('cycleBanner');
   const markedDays = dates.filter(d => attendance[d] && Object.keys(attendance[d]).length>0).length;
   const complete = markedDays === dates.length && reportOffset===0;
   const threshold = Number(document.getElementById('thresholdInput').value) || 0;
-  const low = roster.map(s=>({ s, pct: studentPercentage(s.id, cumulativeDates) })).filter(x=> x.pct!==null && x.pct < threshold);
+  const low = roster.map(s=>({ s, pct: studentPercentage(s.id, dates) })).filter(x=> x.pct!==null && x.pct < threshold);
 
   if(!complete || low.length===0){ banner.style.display='none'; return; }
   banner.style.display='flex';
   banner.innerHTML = `
-    <div><strong>15-day cycle complete</strong><span>${low.length} student${low.length>1?'s':''} below ${threshold}% cumulative attendance — ready to notify</span></div>
+    <div><strong>15-day cycle complete</strong><span>${low.length} student${low.length>1?'s':''} below ${threshold}% attendance — ready to notify</span></div>
     <div class="send-actions">
       <button class="btn btn-sm btn-whatsapp" id="sendWhatsappBtn">📲 Send via WhatsApp</button>
       <button class="btn btn-sm btn-sms" id="sendSmsBtn">✉️ Send via SMS</button>
     </div>`;
-  document.getElementById('sendWhatsappBtn').addEventListener('click', ()=> sendLowAttendance(dates, cumulativeDates, roster, 'whatsapp'));
-  document.getElementById('sendSmsBtn').addEventListener('click', ()=> sendLowAttendance(dates, cumulativeDates, roster, 'sms'));
+  document.getElementById('sendWhatsappBtn').addEventListener('click', ()=> sendLowAttendance(dates, roster, 'whatsapp'));
+  document.getElementById('sendSmsBtn').addEventListener('click', ()=> sendLowAttendance(dates, roster, 'sms'));
 }
-function buildLowAttendanceMessage(dates, cumulativeDates, roster, threshold){
-  const low = roster.map(s=>({ s, pct: studentPercentage(s.id, cumulativeDates) })).filter(x=> x.pct!==null && x.pct < threshold).sort((a,b)=>a.pct-b.pct);
-  let msg = `📋 Cumulative Attendance Report (through ${fmtDate(dates[dates.length-1])})\nStudents below ${threshold}% cumulative attendance:\n\n`;
+function buildLowAttendanceMessage(dates, roster, threshold){
+  const low = roster.map(s=>({ s, pct: studentPercentage(s.id, dates) })).filter(x=> x.pct!==null && x.pct < threshold).sort((a,b)=>a.pct-b.pct);
+  let msg = `📋 Attendance Report (${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])})\nStudents below ${threshold}% attendance:\n\n`;
   low.forEach(x=>{ msg += `${x.s.regNo} - ${x.s.name}: ${x.pct}%\n`; });
   return msg;
 }
-function sendLowAttendance(dates, cumulativeDates, roster, channel){
+function sendLowAttendance(dates, roster, channel){
   const threshold = Number(document.getElementById('thresholdInput').value) || 0;
-  const text = buildLowAttendanceMessage(dates, cumulativeDates, roster, threshold);
+  const text = buildLowAttendanceMessage(dates, roster, threshold);
   const encoded = encodeURIComponent(text);
   if(channel==='whatsapp'){ window.open(`https://wa.me/?text=${encoded}`, '_blank'); }
   else {
@@ -1169,7 +1136,7 @@ function sendLowAttendance(dates, cumulativeDates, roster, channel){
   }
 }
 
-function renderParentNotifyPanel(dates, cumulativeDates, roster){
+function renderParentNotifyPanel(dates, roster){
   const panel = document.getElementById('parentNotifyPanel');
   const markedDays = dates.filter(d => attendance[d] && Object.keys(attendance[d]).length>0).length;
   const complete = markedDays === dates.length && reportOffset===0;
@@ -1185,7 +1152,7 @@ function renderParentNotifyPanel(dates, cumulativeDates, roster){
   panel.className='parent-notify-panel';
   let rows='';
   withPhone.forEach(s=>{
-    const pct = studentPercentage(s.id, cumulativeDates);
+    const pct = studentPercentage(s.id, dates);
     const sent = sentList.includes(s.id);
     rows += `<div class="pn-row">
       <div class="pn-info"><strong>${escapeHtml(s.name)}</strong> <span class="reg-badge mono">${escapeHtml(s.regNo)}</span><div class="pn-phone">📞 ${escapeHtml(s.parentPhone)}</div></div>
@@ -1194,15 +1161,15 @@ function renderParentNotifyPanel(dates, cumulativeDates, roster){
     </div>`;
   });
   panel.innerHTML = `
-    <div class="pn-head"><div><strong>Notify Parents</strong><br><span>15-day cycle complete — tap to text each parent their child's cumulative attendance %.</span></div>
+    <div class="pn-head"><div><strong>Notify Parents</strong><br><span>15-day cycle complete — tap to text each parent their child's attendance %.</span></div>
     <button class="btn btn-ghost btn-sm" id="dismissNotifyBtn">Dismiss until next cycle</button></div>${rows}`;
 
   panel.querySelectorAll('[data-notify]').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       const sid = btn.dataset.notify;
       const s = students.find(x=>x.id===sid);
-      const pct = studentPercentage(sid, cumulativeDates);
-      const msg = `Attendance update: ${s.name} (${s.regNo}) has ${pct===null?'—':pct+'%'} cumulative attendance through ${fmtDate(dates[dates.length-1])}.`;
+      const pct = studentPercentage(sid, dates);
+      const msg = `Attendance update: ${s.name} (${s.regNo}) has ${pct===null?'—':pct+'%'} attendance from ${fmtDate(dates[0])} to ${fmtDate(dates[dates.length-1])}.`;
       const encoded = encodeURIComponent(msg);
       const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
       const phone = s.parentPhone.replace(/[^\d+]/g,'');
@@ -1227,8 +1194,7 @@ document.getElementById('rosterReport').addEventListener('click', e=>{
 function openShowModal(studentId){
   const s = students.find(x=>x.id===studentId);
   const dates = last15Dates(reportOffset);
-  const cumulativeDates = activeSemesterStartDate ? datesBetween(activeSemesterStartDate, dates[dates.length-1]) : dates;
-  const pct = studentPercentage(studentId, cumulativeDates);
+  const pct = studentPercentage(studentId, dates);
   document.getElementById('showModalTitle').textContent = s.name + "'s Attendance";
   let rows='';
   dates.slice().reverse().forEach(d=>{
@@ -1244,16 +1210,15 @@ function openShowModal(studentId){
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;">
       ${s.photo ? `<img class="avatar" src="${s.photo}" style="width:48px;height:48px;">` : `<div class="avatar-fallback">${initials(s.name)}</div>`}
       <div><div style="font-weight:600;">${escapeHtml(s.name)} <span class="reg-badge mono">${escapeHtml(s.regNo)}</span></div>
-      <span class="pct-pill ${pct===null?'':pctClass(pct)}">${pct===null?'No data':pct+'% cumulative'}</span></div>
+      <span class="pct-pill ${pct===null?'':pctClass(pct)}">${pct===null?'No data':pct+'% period'}</span></div>
     </div>
-    <p style="font-size:11.5px;color:#5B7285;margin:0 0 8px 0;">Daily breakdown below shows the last 15 days; the percentage above is cumulative from semester start.</p>${rows}`;
+    <p style="font-size:11.5px;color:#5B7285;margin:0 0 8px 0;">Daily breakdown for the selected 15-day range:</p>${rows}`;
   document.getElementById('showModalOverlay').classList.add('active');
 }
 document.getElementById('closeShowModal').addEventListener('click', ()=>document.getElementById('showModalOverlay').classList.remove('active'));
 
 document.getElementById('shareReportBtn').addEventListener('click', ()=>{
   const dates = last15Dates(reportOffset);
-  const cumulativeDates = activeSemesterStartDate ? datesBetween(activeSemesterStartDate, dates[dates.length-1]) : dates;
   const deptFilter = document.getElementById('reportDeptFilter').value;
   const yearFilter = document.getElementById('reportYearFilter').value;
   const sectionFilter = document.getElementById('reportSectionFilter').value;
@@ -1269,7 +1234,7 @@ document.getElementById('shareReportBtn').addEventListener('click', ()=>{
     students: roster.map(s=>({
       name:s.name, regNo:s.regNo, department:s.department||'',
       daily: dates.map(d=>{ if(holidays[d]) return null; return dayPeriodsSummary(d, s.id); }),
-      pct: studentPercentage(s.id, cumulativeDates)
+      pct: studentPercentage(s.id, dates)
     }))
   };
   const encoded = btoa(encodeURIComponent(JSON.stringify(snapshot)));
@@ -1285,64 +1250,8 @@ document.getElementById('copyShareLinkBtn').addEventListener('click', ()=>{
 });
 document.querySelectorAll('.modal-overlay').forEach(ov=> ov.addEventListener('click', e=>{ if(e.target===ov) ov.classList.remove('active'); }));
 
-async function loadSemesters(){
-  const snap = await getDocs(semestersColRef);
-  return snap.docs.map(d=>({ id:d.id, ...d.data() })).sort((a,b)=> (b.startDate||'').localeCompare(a.startDate||''));
-}
-
-async function renderSemesterCycleBox(){
-  const box = document.getElementById('currentSemesterBox');
-  box.innerHTML = '<p style="color:#6C8499;font-size:13px;">Loading…</p>';
-  let semesters;
-  try{ semesters = await loadSemesters(); }
-  catch(e){ console.error(e); box.innerHTML='<p style="color:#6C8499;font-size:13px;">Could not load semester data.</p>'; return; }
-
-  const active = semesters.find(s=>s.status==='active');
-  if(!active){
-    box.innerHTML = `
-      <p style="font-size:13.5px;color:#5B7285;margin-top:0;">No semester is currently running. Start one so Reports can calculate cumulative attendance.</p>
-      <div class="date-picker-row">
-        <input type="text" id="newSemesterNameInput" placeholder="e.g. Semester 1 - 2026" style="flex:1;padding:9px 12px;border:1.5px solid var(--line);border-radius:8px;">
-        <button class="btn btn-brass btn-sm" id="startSemesterBtn">▶ Start Semester</button>
-      </div>`;
-    document.getElementById('startSemesterBtn').addEventListener('click', async ()=>{
-      const name = document.getElementById('newSemesterNameInput').value.trim();
-      if(!name){ alert('Enter a name for this semester.'); return; }
-      try{
-        const ref = doc(semestersColRef);
-        await setDoc(ref, { name, startDate: todayStr(), endDate:'', status:'active' });
-        showStamp('SEMESTER STARTED ✓');
-        renderSemesterCycleBox();
-      }catch(e){ console.error(e); alert('Could not start semester — check your connection.'); }
-    });
-  } else {
-    const daysSoFar = datesBetween(active.startDate, todayStr()).length;
-    box.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
-        <div>
-          <h3 class="slab" style="margin:0 0 4px 0;font-size:17px;">${escapeHtml(active.name)}</h3>
-          <span style="font-size:12.5px;color:#5B7285;">Started ${fmtDate(active.startDate)} · ${daysSoFar} day${daysSoFar!==1?'s':''} so far · Reports tab shows cumulative % from this date</span>
-        </div>
-        <button class="btn btn-danger btn-outline btn-sm" id="finishSemesterBtn">🏁 Finish Semester &amp; Start New</button>
-      </div>`;
-    document.getElementById('finishSemesterBtn').addEventListener('click', async ()=>{
-      if(!confirm(`Finish "${active.name}"? Its attendance record stays permanently saved.`)) return;
-      const newName = prompt('Name for the new semester (e.g. "Semester 2 - 2026"):', '');
-      if(!newName) return;
-      try{
-        await setDoc(doc(semestersColRef, active.id), { endDate: todayStr(), status:'closed' }, {merge:true});
-        const ref = doc(semestersColRef);
-        await setDoc(ref, { name:newName, startDate: todayStr(), endDate:'', status:'active' });
-        showStamp('SEMESTER CLOSED — NEW ONE STARTED ✓');
-        renderSemesterCycleBox();
-      }catch(e){ console.error(e); alert('Could not finish semester — check your connection.'); }
-    });
-  }
-}
-
 function renderSettingsView(){
   refreshDeptSelects();
-  renderSemesterCycleBox();
   const chipList = document.getElementById('deptChipList');
   chipList.innerHTML='';
   departments.forEach(d=>{
