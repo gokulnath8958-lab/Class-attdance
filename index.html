@@ -1027,13 +1027,21 @@ function updateAttendanceSummary(){
   const absent = vals.filter(v=>v==='A').length;
   document.getElementById('attendanceSummary').textContent = `${present} present · ${absent} absent · ${vals.length} total`;
 }
-
 document.getElementById('saveAttendanceBtn').addEventListener('click', async ()=>{
   const date = dateInput.value || todayStr();
-  const ok = await saveAttendanceDoc(date, selectedPeriod, {...draftMarks});
+  
+  // Fetch latest existing data from Firestore/memory first to prevent overwriting other departments
+  await fetchAttendanceDoc(date, selectedPeriod, true);
+  const existingPeriodMarks = (attendance[date] && attendance[date][selectedPeriod]) || {};
+
+  // Merge existing marks with the newly edited draft marks from the current view
+  const mergedMarks = { ...existingPeriodMarks, ...draftMarks };
+
+  const ok = await saveAttendanceDoc(date, selectedPeriod, mergedMarks);
   if(ok) showStamp('SAVED ✓');
   renderAttendanceView();
 });
+
 
 let reportOffset = 0;
 let reportsRenderToken = 0;
