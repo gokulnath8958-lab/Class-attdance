@@ -696,7 +696,7 @@ function get15DayBlockDates(blockIndex){
 }
 
 function initials(name){ return name.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
-function escapeHtml(str){ return (str||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;n'}[m])); }
+function escapeHtml(str){ return (str||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 function showStamp(text){ const t=document.getElementById('stampToast'); t.textContent=text; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1400); }
 function pctClass(p){ if(p>=85) return 'pct-good'; if(p>=60) return 'pct-warn'; return 'pct-bad'; }
 
@@ -974,7 +974,12 @@ async function renderAttendanceView(){
 
   list.innerHTML='';
   draftMarks = {};
-  roster.forEach(s=>{ draftMarks[s.id] = existing[s.id] || 'P'; });
+  roster.forEach(s=>{
+    // Keep existing draft choice if already set, otherwise fallback to saved DB record or default to 'P'
+    if (!draftMarks[s.id]) {
+      draftMarks[s.id] = existing[s.id] || 'P';
+    }
+  });
 
   roster.forEach(s=>{
     const row = document.createElement('div');
