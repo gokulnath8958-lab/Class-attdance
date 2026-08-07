@@ -484,10 +484,6 @@ const firebaseConfig = {
 const fbApp = initializeApp(firebaseConfig);
 const db = getFirestore(fbApp);
 
-/* Storage is split so no single document can ever hit Firestore's 1MB-per-document ceiling:
-   - rollcall_meta/config  → departments, classHours, holidays (tiny, always small)
-   - rollcall_students/{id} → ONE small document per student (not one giant array)
-   - rollcall_attendance/{date}_p{period} → ONE small document per date+period (not one growing blob) */
 const metaRef = doc(db, "rollcall_meta", "config");
 const studentsColRef = collection(db, "rollcall_students");
 const semestersColRef = collection(db, "rollcall_semesters");
@@ -496,13 +492,13 @@ function attendanceDocRef(date, period){ return doc(db, "rollcall_attendance", `
 const auth = getAuth(fbApp);
 const googleProvider = new GoogleAuthProvider();
 const staffColRef = collection(db, "rollcall_staff");
-let currentStaff = null; // { email, name } once signed in and authorized
+let currentStaff = null;
 let authResolved = false;
-let dataReady = false;   // true once meta + students have both loaded at least once
+let dataReady = false;
 let appBooted = false;
 function maybeBoot(){
   if(appBooted) return;
-  if(!currentStaff) return; // not signed in / not yet approved
+  if(!currentStaff) return;
   if(!dataReady){ showLoginState('connecting'); return; }
   appBooted = true;
   loginScreen.style.display='none'; appRoot.style.display='block';
@@ -515,29 +511,25 @@ let studentsSnapshotHandled = false;
 
 function setCloudStatus(text){ const el=document.getElementById('cloudStatus'); if(el) el.textContent = text; }
 
-/* ============ Storage keys ============ */
 const LS_STUDENTS='rollcall_students', LS_ATTENDANCE='rollcall_attendance', LS_HOLIDAYS='rollcall_holidays',
       LS_NOTIFIED='rollcall_notified', LS_LAST_DATE='rollcall_last_date', LS_LAST_PERIOD='rollcall_last_period',
       LS_DEPARTMENTS='rollcall_departments', LS_CLASS_HOURS='rollcall_class_hours', LS_PIN='rollcall_pin',
       SS_AUTHED='rollcall_authed';
 
-/* Only these small settings sync through the shared meta document.
-   Students and attendance are handled separately (see below) so they never bloat one document. */
 const CLOUD_FIELD_MAP = {
   [LS_DEPARTMENTS]:'departments', [LS_CLASS_HOURS]:'classHours', [LS_HOLIDAYS]:'holidays'
 };
 
-/* ---- Safe storage wrapper: every write is verified; failures alert instead of silently vanishing ---- */
 function safeSet(key, value){
   try{
     localStorage.setItem(key, value);
     if(localStorage.getItem(key) !== value){
-      alert('Save did not verify for "'+key+'". Your browser storage may be full or in a private/incognito mode that limits storage. Please free up space or switch out of private browsing, then try again. Use Settings → Export Backup often to avoid losing data.');
+      alert('Save did not verify for "'+key+'". Your browser storage may be full or in a private/incognito mode.');
       return false;
     }
     return true;
   }catch(e){
-    alert('Could not save data (storage error: '+e.message+'). This usually means the browser storage is full or blocked (private/incognito mode). Please export a backup from Settings when possible, and avoid private browsing for this app.');
+    alert('Could not save data (storage error: '+e.message+').');
     return false;
   }
 }
@@ -555,8 +547,6 @@ function saveJSON(key, obj){
 }
 
 function loadStudents(){ return loadJSON(LS_STUDENTS, []); }
-/* Students now sync as ONE small Firestore document per student, not one giant array.
-   diffAndSyncStudents compares old vs new local arrays and only writes/deletes the students that actually changed. */
 function diffAndSyncStudents(prevList, nextList){
   safeSet(LS_STUDENTS, JSON.stringify(nextList));
   if(!cloudReady) return;
@@ -564,7 +554,7 @@ function diffAndSyncStudents(prevList, nextList){
   nextList.forEach(s=>{
     const prev = prevList.find(p=>p.id===s.id);
     if(!prev || JSON.stringify(prev) !== JSON.stringify(s)){
-      const { id, ...dataOnly } = s; // don't store 'id' inside the doc — it's already the document's own ID
+      const { id, ...dataOnly } = s;
       setDoc(doc(studentsColRef, s.id), dataOnly).catch(err=>{ console.error(err); showStamp('⚠ NOT SYNCED (offline?)'); });
     }
   });
@@ -590,9 +580,9 @@ function loadClassHours(){
 function saveClassHours(list){ return saveJSON(LS_CLASS_HOURS, list); }
 
 let students = loadStudents();
-let attendance = {};   // in-memory cache, populated on demand: { date: { periodIdx: { studentId: 'P'|'A' } } }
-const attendanceFetched = new Set(); // 'date_period' keys already fetched this session (avoid refetch spam)
-const periodMeta = {}; // 'date_period' -> { markedByName, markedByEmail, savedAt }
+let attendance = {};
+const attendanceFetched = new Set();
+const periodMeta = {};
 
 async function fetchAttendanceDoc(date, period, forceRefresh){
   const key = date+'_'+period;
@@ -613,7 +603,7 @@ async function fetchAttendanceDoc(date, period, forceRefresh){
 }
 async function saveAttendanceDoc(date, period, marks){
   if(!attendance[date]) attendance[date] = {};
-  attendance[date][period] = marks; // optimistic local update
+  attendance[date][period] = marks;
   attendanceFetched.add(date+'_'+period);
   if(!cloudReady){ showStamp('SAVED ✓ (offline — will not sync)'); return true; }
   try{
@@ -628,12 +618,11 @@ async function saveAttendanceDoc(date, period, marks){
     return false;
   }
 }
-let holidays = loadHolidays();           // { date: true }
+let holidays = loadHolidays();
 let departments = loadDepartments();
-let classHours = loadClassHours();       // [{label,time}, ... up to 8]
+let classHours = loadClassHours();
 let editingStudentId = null;
 
-/* ============ Staff Google Sign-In gate ============ */
 const loginScreen = document.getElementById('loginScreen');
 const appRoot = document.getElementById('appRoot');
 
@@ -663,7 +652,6 @@ async function checkStaffAndProceed(user, isRetry){
   try{
     const staffSnap = await getDocs(staffColRef);
     if(staffSnap.empty){
-      // First person ever to sign in becomes the first authorized staff member
       await setDoc(doc(staffColRef, email), { email, name: user.displayName||email, addedAt: new Date().toISOString() });
       grantAccess(email, user.displayName||email);
       return;
@@ -678,11 +666,10 @@ async function checkStaffAndProceed(user, isRetry){
   }catch(e){
     console.error('staff check failed', e);
     if(!isRetry){
-      // First failures right after page load are often a transient connection race — try once more before alarming the user
       setTimeout(()=> checkStaffAndProceed(user, true), 1200);
       return;
     }
-    alert('Could not verify staff access.\n\nError details: ' + (e.code || e.message || e) + '\n\nIf this says "permission-denied", the Firestore security rule needs checking. If it says "unavailable" or "offline", check your internet connection and try again.');
+    alert('Could not verify staff access.\n\nError details: ' + (e.code || e.message || e));
     signOut(auth);
   }
 }
@@ -699,14 +686,13 @@ onAuthStateChanged(auth, user=>{
     currentStaff = null;
     document.getElementById('staffChip').textContent='';
     const params = new URLSearchParams(location.search);
-    if(params.get('shared')) return; // shared links never need login
+    if(params.get('shared')) return;
     showLoginState('signin');
     return;
   }
   checkStaffAndProceed(user);
 });
 
-/* ============ Utils ============ */
 function uid(){ return 's_' + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function fmtDate(d){ const dt=new Date(d+'T00:00:00'); return dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); }
@@ -730,7 +716,6 @@ function escapeHtml(str){ return (str||'').replace(/[&<>"']/g, m=>({'&':'&amp;',
 function showStamp(text){ const t=document.getElementById('stampToast'); t.textContent=text; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1400); }
 function pctClass(p){ if(p>=85) return 'pct-good'; if(p>=60) return 'pct-warn'; return 'pct-bad'; }
 
-/* Percentage now counts every PERIOD across the given dates, not just days */
 function studentPercentage(studentId, dates){
   let marked=0, present=0;
   dates.forEach(d=>{
@@ -769,7 +754,6 @@ function refreshDeptSelects(){
   populateDeptSelect(document.getElementById('reportDeptFilter'), true);
 }
 
-/* ============ Tabs ============ */
 document.getElementById('tabNav').addEventListener('click', e=>{
   const btn = e.target.closest('.tab-btn');
   if(!btn) return;
@@ -782,7 +766,6 @@ document.getElementById('tabNav').addEventListener('click', e=>{
   if(btn.dataset.view==='settings') renderSettingsView();
 });
 
-/* ============ Students CRUD ============ */
 function isActive(s){ return (s.status||'active') !== 'passed_out'; }
 
 function renderStudents(){
@@ -791,7 +774,7 @@ function renderStudents(){
   const deptFilter = document.getElementById('studentDeptFilter').value;
   const yearFilter = document.getElementById('studentYearFilter').value;
   const sectionFilter = document.getElementById('studentSectionFilter').value;
-  const statusFilter = document.getElementById('studentStatusFilter').value; // 'active' or 'passed_out'
+  const statusFilter = document.getElementById('studentStatusFilter').value;
 
   const filtered = students.filter(s=>
     (statusFilter==='passed_out' ? !isActive(s) : isActive(s)) &&
@@ -879,7 +862,7 @@ document.getElementById('saveStudentBtn').addEventListener('click', ()=>{
   const section = document.getElementById('sectionInput').value;
   if(!name || !regNo){ alert('Please enter both name and register number.'); return; }
 
-  const prevStudents = students; // keep a copy in case save fails, so UI/memory doesn't drift from storage
+  const prevStudents = students;
   let nextStudents;
   if(editingStudentId){
     nextStudents = students.map(s => s.id===editingStudentId ? {...s, name, regNo, parentPhone, department, year, section} : s);
@@ -892,11 +875,10 @@ document.getElementById('saveStudentBtn').addEventListener('click', ()=>{
     closeStudentModal();
     showStamp('SAVED ✓');
   } else {
-    students = prevStudents; // save failed and was already alerted — don't let in-memory state drift from storage
+    students = prevStudents;
   }
 });
 
-/* ============ Mark Attendance ============ */
 const dateInput = document.getElementById('attendanceDate');
 dateInput.max = todayStr();
 let selectedPeriod = 0;
@@ -969,7 +951,7 @@ async function renderAttendanceView(){
 
   const thisCallToken = ++attendanceRenderToken;
   await fetchAttendanceDoc(date, selectedPeriod, true);
-  if(thisCallToken !== attendanceRenderToken) return; // a newer render started while we were fetching — drop this stale one
+  if(thisCallToken !== attendanceRenderToken) return;
 
   const periodLabel = (classHours[selectedPeriod] && classHours[selectedPeriod].label) || ('Period '+(selectedPeriod+1));
   const existing = (attendance[date] && attendance[date][selectedPeriod]) || {};
@@ -1039,7 +1021,6 @@ document.getElementById('saveAttendanceBtn').addEventListener('click', async ()=
   renderAttendanceView();
 });
 
-/* ============ Reports ============ */
 let reportOffset = 0;
 let reportsRenderToken = 0;
 document.getElementById('prevPeriodBtn').addEventListener('click', ()=>{ reportOffset += 1; renderReportsView(); });
@@ -1052,7 +1033,7 @@ document.getElementById('thresholdInput').addEventListener('input', ()=>{
   if(document.getElementById('view-reports').classList.contains('active')) renderReportsView();
 });
 
-let activeSemesterStartDate = null; // cached after each Reports load, reused by Show Attendance / Share Link
+let activeSemesterStartDate = null;
 
 async function renderReportsView(){
   const dates = last15Dates(reportOffset);
@@ -1076,8 +1057,6 @@ async function renderReportsView(){
 
   const thisCallToken = ++reportsRenderToken;
 
-  // Percentage is cumulative: from the active semester's start date through the END of this 15-day window.
-  // The daily grid below still only *displays* the 15 days picked by the Previous/Next buttons.
   try{
     const semSnap = await getDocs(semestersColRef);
     const active = semSnap.docs.map(d=>d.data()).find(s=>s.status==='active');
@@ -1097,7 +1076,7 @@ async function renderReportsView(){
     classHours.forEach((_,p)=> fetches.push(fetchAttendanceDoc(d, p)));
   });
   await Promise.all(fetches);
-  if(thisCallToken !== reportsRenderToken) return; // a newer render started while fetching — drop this stale one
+  if(thisCallToken !== reportsRenderToken) return;
   table.innerHTML='';
 
   const anyRecords = dates.some(d => attendance[d] && Object.values(attendance[d]).some(periodMarks => Object.keys(periodMarks||{}).length>0));
@@ -1306,7 +1285,6 @@ document.getElementById('copyShareLinkBtn').addEventListener('click', ()=>{
 });
 document.querySelectorAll('.modal-overlay').forEach(ov=> ov.addEventListener('click', e=>{ if(e.target===ov) ov.classList.remove('active'); }));
 
-/* ============ Semester cycle ============ */
 async function loadSemesters(){
   const snap = await getDocs(semestersColRef);
   return snap.docs.map(d=>({ id:d.id, ...d.data() })).sort((a,b)=> (b.startDate||'').localeCompare(a.startDate||''));
@@ -1348,7 +1326,7 @@ async function renderSemesterCycleBox(){
         <button class="btn btn-danger btn-outline btn-sm" id="finishSemesterBtn">🏁 Finish Semester &amp; Start New</button>
       </div>`;
     document.getElementById('finishSemesterBtn').addEventListener('click', async ()=>{
-      if(!confirm(`Finish "${active.name}"? Its attendance record stays permanently saved. You'll then be asked to name the next semester, which resets cumulative tracking from today.`)) return;
+      if(!confirm(`Finish "${active.name}"? Its attendance record stays permanently saved.`)) return;
       const newName = prompt('Name for the new semester (e.g. "Semester 2 - 2026"):', '');
       if(!newName) return;
       try{
@@ -1362,7 +1340,6 @@ async function renderSemesterCycleBox(){
   }
 }
 
-/* ============ Settings ============ */
 function renderSettingsView(){
   refreshDeptSelects();
   renderSemesterCycleBox();
@@ -1458,7 +1435,7 @@ document.getElementById('promoteYearBtn').addEventListener('click', ()=>{
     const defaultBatch = String(new Date().getFullYear());
     const batch = prompt(`Passing out ${group.length} Final Year student(s). Enter a batch name/year to file them under (e.g. "${defaultBatch}"):`, defaultBatch);
     if(!batch) return;
-    if(!confirm(`Mark ${group.length} student(s) as Passed Out under batch "${batch}"? Their attendance history is kept, but they'll move to Alumni and stop appearing in Mark Attendance.`)) return;
+    if(!confirm(`Mark ${group.length} student(s) as Passed Out under batch "${batch}"?`)) return;
     const groupIds = new Set(group.map(s=>s.id));
     const next = students.map(s => groupIds.has(s.id) ? {...s, status:'passed_out', batch} : s);
     if(saveStudents(next)){ students = next; renderStudents(); renderSettingsView(); showStamp('PASSED OUT ✓'); }
@@ -1468,7 +1445,7 @@ document.getElementById('promoteYearBtn').addEventListener('click', ()=>{
   const toYear = NEXT_YEAR[fromYear];
   const group = students.filter(s=>isActive(s) && s.year===fromYear);
   if(group.length===0){ alert(`No active students currently in ${fromYear}.`); return; }
-  if(!confirm(`Promote ${group.length} student(s) from ${fromYear} to ${toYear}? This can't be undone automatically — you'd need to edit them back individually.`)) return;
+  if(!confirm(`Promote ${group.length} student(s) from ${fromYear} to ${toYear}?`)) return;
   const groupIds = new Set(group.map(s=>s.id));
   const next = students.map(s => groupIds.has(s.id) ? {...s, year:toYear} : s);
   if(saveStudents(next)){ students = next; renderStudents(); showStamp('PROMOTED ✓'); }
@@ -1486,10 +1463,7 @@ document.getElementById('restoreBatchBtn').addEventListener('click', ()=>{
 });
 
 document.getElementById('exportBtn').addEventListener('click', ()=>{
-  // Attendance is intentionally NOT included here — it's already safely split across many small
-  // Firestore documents (one per date+period), so there's no single blob of it to export.
-  // This backup covers the roster and settings, which is what local storage could otherwise lose.
-  const backup = { students, holidays, departments, classHours, exportedAt: new Date().toISOString(), note: 'Attendance records live in Firestore (rollcall_attendance collection) and are not included in this file.' };
+  const backup = { students, holidays, departments, classHours, exportedAt: new Date().toISOString() };
   const blob = new Blob([JSON.stringify(backup,null,2)], {type:'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
@@ -1515,7 +1489,6 @@ document.getElementById('importInput').addEventListener('change', e=>{
   reader.readAsText(file);
 });
 
-/* ============ Shared read-only mode ============ */
 function loadSharedFromUrl(){
   const params = new URLSearchParams(location.search);
   const data = params.get('shared');
@@ -1560,7 +1533,6 @@ function loadSharedFromUrl(){
   return true;
 }
 
-/* ============ Boot ============ */
 function refreshCurrentView(){
   if(document.getElementById('view-students').classList.contains('active')) renderStudents();
   if(document.getElementById('view-attendance').classList.contains('active')) renderAttendanceView();
@@ -1593,7 +1565,7 @@ if(!loadSharedFromUrl()){
       safeSet(LS_DEPARTMENTS, JSON.stringify(departments));
       safeSet(LS_CLASS_HOURS, JSON.stringify(classHours));
     } else {
-      setDoc(metaRef, { departments, classHours, holidays }); // first ever run: seed from this device
+      setDoc(metaRef, { departments, classHours, holidays });
     }
     metaSnapshotHandled = true;
     dataReady = metaSnapshotHandled && studentsSnapshotHandled;
@@ -1626,7 +1598,6 @@ if(!loadSharedFromUrl()){
 } else {
   document.getElementById('todayChip').textContent = '';
   document.getElementById('cloudStatus').style.display = 'none';
-  document.getElementById('staffChip').style.display = 'none';
 }
 </script>
 </body>
