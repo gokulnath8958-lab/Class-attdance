@@ -305,9 +305,9 @@
           <h2>15-Day Cumulative Attendance Report</h2>
           <p id="reportRangeLabel">Cumulative percentage across blocks of 15 days (accumulating periods and attendance).</p>
           <div class="period-nav">
-            <button class="btn btn-outline btn-sm" id="prevPeriodBtn">◀ Older 15 Days</button>
-            <button class="btn btn-outline btn-sm" id="nextPeriodBtn">Newer 15 Days ▶</button>
-            <button class="btn btn-ghost btn-sm" id="currentPeriodBtn" style="display:none;">Back to Current Block</button>
+            <button class="btn btn-outline btn-sm" id="prevPeriodBtn">◀ Previous 15 days</button>
+            <button class="btn btn-outline btn-sm" id="nextPeriodBtn">Next 15 days ▶</button>
+            <button class="btn btn-ghost btn-sm" id="currentPeriodBtn" style="display:none;">Back to current</button>
           </div>
           <div class="filter-row">
             <select id="reportDeptFilter"><option value="">All Departments</option></select>
@@ -687,7 +687,7 @@ function uid(){ return 's_' + Date.now().toString(36) + Math.random().toString(3
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 function fmtDate(d){ const dt=new Date(d+'T00:00:00'); return dt.toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); }
 
-// Generates 15-day blocks where blockIndex=0 is the current active 15-day block, and higher indices are older blocks.
+// Generates 15-day blocks. Block 0 = latest 15 days, Block 1 = previous 15 days, etc.
 function get15DayBlockDates(blockIndex){
   blockIndex = blockIndex || 0;
   const arr=[]; const base=new Date(); base.setDate(base.getDate()-(blockIndex*15));
@@ -696,16 +696,16 @@ function get15DayBlockDates(blockIndex){
 }
 
 function initials(name){ return name.trim().split(/\s+/).map(w=>w[0]).slice(0,2).join('').toUpperCase(); }
-function escapeHtml(str){ return (str||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+function escapeHtml(str){ return (str||'').replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;n'}[m])); }
 function showStamp(text){ const t=document.getElementById('stampToast'); t.textContent=text; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1400); }
 function pctClass(p){ if(p>=85) return 'pct-good'; if(p>=60) return 'pct-warn'; return 'pct-bad'; }
 
-// Calculates cumulative attendance from current block (0) back to upToBlockOffset
+// Calculates cumulative attendance from block 0 up to current reportOffset block
 function studentCumulativeData(studentId, upToBlockOffset){
   let cumulativePresent = 0;
   let cumulativeMarked = 0;
 
-  for(let b = 0; b <= upToBlockOffset; b++){
+  for(let b = upToBlockOffset; b >= 0; b--){
     const dates = get15DayBlockDates(b);
     dates.forEach(d=>{
       if(holidays[d]) return;
@@ -974,11 +974,7 @@ async function renderAttendanceView(){
 
   list.innerHTML='';
   draftMarks = {};
-  roster.forEach(s=>{
-    if (!draftMarks[s.id]) {
-      draftMarks[s.id] = existing[s.id] || 'P';
-    }
-  });
+  roster.forEach(s=>{ draftMarks[s.id] = existing[s.id] || 'P'; });
 
   roster.forEach(s=>{
     const row = document.createElement('div');
@@ -1026,20 +1022,16 @@ function updateAttendanceSummary(){
   const absent = vals.filter(v=>v==='A').length;
   document.getElementById('attendanceSummary').textContent = `${present} present · ${absent} absent · ${vals.length} total`;
 }
+
 document.getElementById('saveAttendanceBtn').addEventListener('click', async ()=>{
   const date = dateInput.value || todayStr();
-  await fetchAttendanceDoc(date, selectedPeriod, true);
-  const existingPeriodMarks = (attendance[date] && attendance[date][selectedPeriod]) || {};
-  const mergedMarks = { ...existingPeriodMarks, ...draftMarks };
-  const ok = await saveAttendanceDoc(date, selectedPeriod, mergedMarks);
+  const ok = await saveAttendanceDoc(date, selectedPeriod, {...draftMarks});
   if(ok) showStamp('SAVED ✓');
   renderAttendanceView();
 });
 
-
 let reportOffset = 0;
 let reportsRenderToken = 0;
-// Navigation: Moving to older blocks or newer blocks
 document.getElementById('prevPeriodBtn').addEventListener('click', ()=>{ reportOffset += 1; renderReportsView(); });
 document.getElementById('nextPeriodBtn').addEventListener('click', ()=>{ if(reportOffset>0){ reportOffset -= 1; renderReportsView(); } });
 document.getElementById('currentPeriodBtn').addEventListener('click', ()=>{ reportOffset = 0; renderReportsView(); });
@@ -1074,7 +1066,7 @@ async function renderReportsView(){
   document.getElementById('reportRangeLabel').textContent = `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} (Cumulative percentage summing current and previous 15-day blocks)`;
 
   const allNeededDates = [];
-  for(let b = 0; b <= reportOffset; b++){
+  for(let b = reportOffset; b >= 0; b--){
     allNeededDates.push(...get15DayBlockDates(b));
   }
 
